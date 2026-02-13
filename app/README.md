@@ -20,5 +20,6 @@ samples, guidance on mobile development, and a full API reference.
 Some FlutterFire plugins on Windows require the Firebase C++ SDK (large download). To avoid downloading it into the repo `build/` folder, use:
 
 - `powershell -ExecutionPolicy Bypass -File .\\tools\\build_windows.ps1`
+- `powershell -ExecutionPolicy Bypass -File .\\tools\\run_windows.ps1`
 
 This script caches the SDK under `%LOCALAPPDATA%\\PME_TPE\\firebase_cpp_sdk_windows_12.7.0\\firebase_cpp_sdk_windows` and sets `FIREBASE_CPP_SDK_DIR` for the build.

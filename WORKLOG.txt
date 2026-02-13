@@ -102,3 +102,21 @@ Resolution
 - Generate it by running a Flutter build from the Flutter project root (`app/`), e.g.:
   - `flutter run -d windows` (or `tools/build_windows.ps1` which also sets `FIREBASE_CPP_SDK_DIR`).
 - Prefer building via Flutter tooling rather than configuring with CMake Tools.
+
+--------------------------------------------------------------------------------
+2026-02-13 - Windows debug run: Firebase ZIP error + missing Supabase defines
+
+Problem
+- `flutter run -d windows` printed `cmake -E tar: error: ZIP decompression failed (-5)` and then the app crashed at startup with:
+  - `Bad state: SUPABASE_URL manquant ou invalide...`
+
+Cause
+- Firebase C++ SDK: because `FIREBASE_CPP_SDK_DIR` was not set for `flutter run`, the FlutterFire Windows CMake tried to download/extract the SDK into `app/build/...` and left a partial zip (~606MB vs ~806MB), which triggers the ZIP decompression error.
+- Supabase env: the app reads `SUPABASE_URL` and `SUPABASE_ANON_KEY` via `String.fromEnvironment`, so they must be provided at launch via `--dart-define` or `--dart-define-from-file`.
+
+Resolution
+- Deleted the partial SDK zip and extracted folder under `app/build/windows/x64` so it wouldn't keep failing.
+- Added `app/tools/run_windows.ps1` to:
+  - ensure/set `FIREBASE_CPP_SDK_DIR` (uses the cached SDK in `%LOCALAPPDATA%`)
+  - run `flutter run -d windows --dart-define-from-file=env.json` automatically when `env.json` exists.
+- Updated `app/README.md` to document the new run script.
