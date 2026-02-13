@@ -1,0 +1,85 @@
+# Repo-level ignores
+# Note: the Flutter app under `app/` already has its own `.gitignore`.
+
+# ---- OS / Editor noise ----
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Never commit git internals (helps if a nested repo exists by accident)
+**/.git/
+
+# ---- Logs / temp ----
+*.log
+*.tmp
+*.bak
+*.swp
+
+# ---- IDEs ----
+.vs/
+.idea/
+*.iml
+
+# Visual Studio / MSBuild
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# VS Code (keep shared configs if you want to commit them)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+
+# ---- Build / tool outputs ----
+/build/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/install_manifest.txt
+
+# Dart / Flutter (in case you run tooling from repo root)
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.pub-cache/
+**/.pub/
+**/coverage/
+
+# ---- Supabase local artifacts ----
+**/supabase/.temp/
+**/supabase/.branches/
+**/supabase/.cache/
+
+# Supabase CLI binaries (downloaded artifacts)
+supabase.exe
+supabase*.tar.gz
+
+# ---- Secrets / credentials ----
+**/.env
+**/.env.*
+**/.env.keys
+**/.env.local
+**/.env.*.local
+
+# Common local app config files that may contain keys
+**/env.json
+
+# Local-only folders
+notes/
+secrets/
+.git-backup/
+
+# Firebase / Google service accounts (private keys)
+**/*firebase-adminsdk*.json
+**/*serviceAccount*.json
+
+# Android signing
+**/*.jks
+**/*.keystore
+**/key.properties

@@ -1,0 +1,793 @@
+supabaseURL : https://yvvtlcwnayuvtkcxnktl.supabase.co
+
+anonKey : eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnRsY3duYXl1dnRrY3hua3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5NDUxNzksImV4cCI6MjA4MjUyMTE3OX0.d9YgxCTdC2-MUjw25ae2TyIei_iwiaK_tFwBwarzzSU
+                                      
+
+const serviceKey = Deno.env.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnRsY3duYXl1dnRrY3hua3RsIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2Njk0NTE3OSwiZXhwIjoyMDgyNTIxMTc5fQ.gIyjILZ4PscqBUnIkNsHm-1EDuUeK9SVYvtVAnU3qwM")!;
+
+
+====================================================================================
+$env:SUPABASE_URL="https://yvvtlcwnayuvtkcxnktl.supabase.co"
+
+$env:SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnRsY3duYXl1dnRrY3hua3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5NDUxNzksImV4cCI6MjA4MjUyMTE3OX0.d9YgxCTdC2-MUjw25ae2TyIei_iwiaK_tFwBwarzzSU"
+
+flutter run -d windows --dart-define=SUPABASE_URL=$env:SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$env:SUPABASE_ANON_KEY
+
+
+
+Remove-Item .\env.json -ErrorAction SilentlyContinue
+
+@'
+{
+  "SUPABASE_URL": "https://yvvtlcwnayuvtkcxnktl.supabase.co",
+  "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl2dnRsY3duYXl1dnRrY3hua3RsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY5NDUxNzksImV4cCI6MjA4MjUyMTE3OX0.d9YgxCTdC2-MUjw25ae2TyIei_iwiaK_tFwBwarzzSU"
+}
+'@ | Set-Content -Path .\env.json -Encoding utf8
+
+====================================================================================
+
+2) Définir JAVA_HOME (temporaire, pour tester)
+
+Choisis le bon chemin et exécute :
+
+Si tu as Android Studio JBR :
+
+$env:JAVA_HOME="C:\Program Files\Android\Android Studio\jbr"
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+
+
+Si tu as un JDK 17 classique :
+
+$env:JAVA_HOME="C:\Program Files\Java\jdk-17"
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+
+3) Vérifier
+java -version
+sdkmanager --version
+
+4) Puis accepter les licences
+flutter doctor --android-licenses
+flutter doctor
+
+Pour le régler définitivement (permanent)
+
+Après que ça marche, on met JAVA_HOME en variable système :
+
+Windows → Environment Variables → New : JAVA_HOME = ton chemin JDK
+
+Ajoute %JAVA_HOME%\bin au Path
+
+====================================================================================
+
+1) Mettre JAVA_HOME + PATH (méthode permanente, recommandée)
+A. Via l’interface Windows (le plus sûr)
+
+Win + S → tape Environment Variables
+
+Ouvre Edit the system environment variables
+
+Clique Environment Variables…
+
+1) Créer JAVA_HOME
+
+Dans System variables (ou User variables si tu préfères), clique New…
+
+Name: JAVA_HOME
+
+Value: chemin du JDK, ex :
+
+C:\Program Files\Java\jdk-17
+
+ou C:\Program Files\Android\Android Studio\jbr
+
+2) Ajouter Java au PATH
+
+Dans System variables → sélectionne Path → Edit
+
+New → ajoute :
+
+%JAVA_HOME%\bin
+
+3) Ajouter Android SDK au PATH
+
+Toujours dans Path, ajoute :
+
+%ANDROID_HOME%\platform-tools
+
+%ANDROID_HOME%\cmdline-tools\latest\bin
+
+4) Créer ANDROID_HOME
+
+New…
+
+Name: ANDROID_HOME
+
+Value: C:\Users\donne\AppData\Local\Android\Sdk
+
+OK partout, puis ferme et rouvre PowerShell/Android Studio.
+
+B. Vérifier que c’est bon
+
+Dans un nouveau PowerShell :
+
+java -version
+sdkmanager --version
+adb --version
+flutter doctor --android-licenses
+flutter doctor
+
+2) Préparations “propres” pour éviter ces problèmes (checklist standard)
+
+Voici la configuration système que je recommande pour développer mobile + desktop + web sans surprises sur Windows.
+
+A) Emplacement des projets
+
+Évite OneDrive/Google Drive pour les projets Flutter/Android.
+Utilise : D:\Dev\... ou C:\Dev\...
+
+Mets OneDrive uniquement pour backups/export/zip, pas pour travailler live.
+
+B) Outils de base (Windows)
+
+Git (et config SSH si tu utilises GitHub/GitLab)
+
+PowerShell + Windows Terminal (OK)
+
+(Optionnel) 7-Zip
+
+C) Flutter
+
+Flutter sur un chemin simple : C:\src\flutter ou D:\tools\flutter
+
+Ajoute ...\flutter\bin dans PATH
+
+Commandes de validation :
+
+flutter doctor -v
+flutter --version
+
+D) Android (obligatoire pour mobile)
+
+Android Studio
+
+Android SDK + cmdline-tools (latest)
+
+Platform-tools (adb)
+
+JDK 17 (JAVA_HOME configuré)
+
+Licences :
+
+flutter doctor --android-licenses
+
+
+Émulateur : Device Manager → créer 1 device stable (Pixel + API stable)
+
+E) Windows Desktop (Flutter Windows)
+
+Visual Studio avec :
+
+Desktop development with C++
+
+Windows SDK
+
+MSVC v143
+
+Validation :
+
+flutter doctor -v
+
+F) Web (Flutter Web)
+
+Chrome / Edge installé (OK)
+
+Pas de dossier verrouillé (encore OneDrive)
+
+G) Réseau/Certificats (évite les “HandshakeException”)
+
+Heure Windows automatique (TLS)
+
+Évite VPN/proxy “HTTPS inspection” pendant dev
+
+Si antivirus avec “SSL scanning”, ajouter des exceptions pour :
+
+*.supabase.co
+
+pub.dev
+
+storage.googleapis.com
+
+H) Bonnes pratiques projet (pour éviter les erreurs récurrentes)
+
+Gérer les secrets Flutter via --dart-define-from-file + fichier env.json
+
+Ajouter env.json à .gitignore
+
+Toujours flutter clean + flutter pub get après déplacement de projet
+
+3) Si tu veux un “setup standard” réutilisable (conseillé)
+
+Je peux te donner un script PowerShell qui :
+
+configure ANDROID_HOME, JAVA_HOME
+
+ajoute les bons PATH
+
+vérifie java, adb, sdkmanager, flutter doctor
+
+Dis-moi juste où est ton JDK (Android Studio ...\jbr ou C:\Program Files\Java\jdk-17).
+
+====================================================================================
+
+Parfait, tu as déjà un JDK installé ici :
+C:\Program Files\Android\openjdk\jdk-21.0.8
+
+On va le déclarer proprement (JAVA_HOME + PATH), puis valider Android.
+
+1) Configuration permanente (Windows)
+
+Ouvre Environment Variables (Variables d’environnement)
+
+Win + S → “Environment Variables” → Edit the system environment variables → Environment Variables…
+
+Dans System variables (ou User variables si tu préfères) :
+
+A) Créer/Modifier JAVA_HOME
+
+Name: JAVA_HOME
+
+Value:
+C:\Program Files\Android\openjdk\jdk-21.0.8
+
+B) Créer/Modifier ANDROID_HOME
+
+Name: ANDROID_HOME
+
+Value:
+C:\Users\donne\AppData\Local\Android\Sdk
+
+C) Modifier Path
+
+Dans Path → Edit → New et ajoute :
+
+%JAVA_HOME%\bin
+
+%ANDROID_HOME%\platform-tools
+
+%ANDROID_HOME%\cmdline-tools\latest\bin
+
+Clique OK partout.
+
+Ferme et rouvre PowerShell (important).
+
+2) Vérification
+
+Dans un nouveau PowerShell :
+
+java -version
+sdkmanager --version
+adb --version
+flutter doctor --android-licenses
+flutter doctor
+
+====================================================================================
+
+Window
+flutter run -d windows --dart-define-from-file="$PWD\env.json"
+====================================================================================
+
+Chrome (Port fix: 5173)
+flutter run -d chrome --web-port=5173 --dart-define-from-file="$PWD\env.json"
+====================================================================================
+
+WebOauth
+
+client ID: <REDACTED>
+client secret: <REDACTED>
+
+=====Google Cloud : créer le projet + activer OAuth
+
+Va sur Google Cloud Console
+
+Crée un Project (ex: pme_tpe)
+
+Va dans APIs & Services → OAuth consent screen
+
+Type: External (souvent)
+
+Remplis App name, email support, etc.
+
+Ajoute au minimum ton email en Test users tant que l’app est en mode test.
+
+Va dans APIs & Services → Credentials
+
+=====Créer les OAuth Client IDs nécessaires
+A) Client Web (OBLIGATOIRE si tu veux Google sur Web, et très utile en général)
+
+Create Credentials → OAuth client ID
+
+Application type: Web application
+
+Authorized JavaScript origins
+
+Dev Flutter Web: http://localhost:xxxxx (selon ton port)
+
+Plus tard: ton domaine prod (ex: https://ton-domaine.com)
+
+Authorized redirect URIs
+
+Copie exactement le “Callback URL (for OAuth)” que Supabase affiche, qui ressemble à :
+
+https://<project-ref>.supabase.co/auth/v1/callback
+
+Sauvegarde → tu obtiens :
+
+Client ID
+
+Client Secret
+
+➡️ Ceux-là vont dans Supabase :
+
+Client IDs: ajoute ce Web Client ID
+
+Client Secret: colle le secret
+
+=====================================================================================
+
+Android
+SHA1:79:09:44:6A:E4:FC:F3:1F:5D:7E:19:5D:20:1A:36:F6:B9:EF:F7:52
+client ID :<REDACTED>
+
+Methode 
+Client Android (OBLIGATOIRE pour Android)
+
+Create Credentials → OAuth client ID
+
+Type: Android
+
+Remplis :
+
+Package name: celui de ton app (ex: com.example.pme_tpe ou ton vrai)
+
+SHA-1 certificate fingerprint: obligatoire
+
+Comment obtenir le SHA-1 (debug)
+
+Dans Windows PowerShell :
+
+keytool -list -v -alias androiddebugkey -keystore "$env:USERPROFILE\.android\debug.keystore" -storepass android -keypass android
+
+
+Tu copies la ligne SHA1.
+
+Pour le release (plus tard)
+
+Quand tu signes ton APK/AAB, tu devras aussi ajouter le SHA-1 release.
+
+➡️ Ce client Android te donne un Android Client ID (pas de secret).
+Ajoute ce Client ID dans Supabase (champ Client IDs, séparé par virgules).
+
+Le fichier debug.keystore n’existe pas encore (ou n’est pas dans ce dossier). Solution rapide :
+
+Vérifie si le dossier existe
+
+Test-Path "$env:USERPROFILE\.android"
+dir "$env:USERPROFILE\.android"
+
+
+Si le dossier n’existe pas, crée-le
+
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.android"
+
+
+Génère le debug keystore
+
+keytool -genkeypair -v -keystore "$env:USERPROFILE\.android\debug.keystore" `
+  -storepass android -keypass android -alias androiddebugkey `
+  -keyalg RSA -keysize 2048 -validity 10000 `
+  -dname "CN=Android Debug,O=Android,C=US"
+
+
+Relance ta commande
+
+keytool -list -v -alias androiddebugkey -keystore "$env:USERPROFILE\.android\debug.keystore" -storepass android -keypass android
+
+
+Si la commande keytool n’est pas reconnue chez toi, dis-moi le résultat de :
+
+where keytool
+where java
+
+====================================================================================
+
+flutter run -d 7c8dc317 --dart-define-from-file="$PWD\env.json"
+=================================================================================
+Le code dans logingpage.dart qui montrait les tokens
+
+try {
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: _email.text.trim(),
+        password: _pass.text,
+      );
+    }
+final session = Supabase.instance.client.auth.currentSession;
+debugPrint('ACCESS_TOKEN = ${session?.accessToken}');
+
+=================================================================================
+Config Firebase 
+FIREBASE_PROJECT_ID
+
+com-example-flutter-appli-1
+
+FIREBASE_CLIENT_EMAIL
+ 
+"client_email": "firebase-adminsdk-fbsvc@com-example-flutter-appli-1.iam.gserviceaccount.com",
+
+
+FIREBASE_PRIVATE_KEY 
+
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDM4Hl6LThf8D+v\nkvtW7e6BbyJBABkBTAnjBxSIsCbCmqIf60tlTbjCrkMJX68XZ5ALsE/8q2Jdsk6y\nWcotm0UkzcmyxhuRLb3fXWO3fzbyfgZ/6rOnWuktI6WstYtQDxxrHb/Mm3m+KAmI\n9ZkrnD8EaMs8BVWiivKte91qslydzJzhZgXilTiC8yqqyJftyVCYnFIsmgF/CdER\nQ6qCqGunzMbhzXoXUXJuU7MI5qdWlEYcPV1AYB80aYjBMMucHplBqZn53RmbWEaD\nQ+a7HOVTd+eYSpWL3SkQl6RCFIoDQCaZ2gZa1VOX1ItqlF4e9lrwgVyxPiL2lEEu\nucNqw3yLAgMBAAECggEAG19SW5R3F7pNh/OnSPH5D6n9dZnBvX6fQ4nKoIiIZS+r\nwX/6TsqXiMsngbUa+5GGmUkxJpzvQ31zLjj43icEkeo8rHnzbO4jlBgyHm4MtVFJ\nJQYCgrWOuc0tcWm/9y5NqbIL0hZjqZhHzdiiYkU51ij6HkbILjNKQQtvhbXW0e4r\nRAj646quwqdg6DpS1OctBbGpaMQ+LZE2QS0GKFZ9u10zSGILNks7adxDjYFBc2S/\nAED8wx+zcMnx0w0XQk0uBUZFDBz4pygM2CXatrTkGkR2Ld56QbkyzH3B4TMxibHO\nfusbtpWN7iVUZC/oS0SoqTdQgt3LIy1CpajZQVQ5AQKBgQDoJ2hnZpg+7l89NNl0\nbJcy4VwwAS0CXu7Ckrho0I3zsGvXxeyzKyLjOleDPWCb1jjzhhspaBUYcH2psXrd\nbvFYQsnEt6+3GdMi0sHuTAFYcuwCT6hXeWwguy3qL1Ngh/cbfy6ot3uhEJLpfkc8\n9DdX4gn7rhYHKLlgB4qZLJRlIQKBgQDh682zohFAw0tuszzR5bZyApqPj/P8Yfco\nnvWy+peo6dgG64ohUFXN2v8voFiVIXKGe3g/L4XkuBGvqwzBZyubcR/aVaYNmQGS\njP5R4hRVlczJ93PPbtjAIIk7zKvMIXz2gARJW0XrBe7gNlIk7vUpPmp20WLgA9+e\n/eqMTIaAKwKBgHUfrKS+NgFJ8fLHPw5l2sJowEHX1gVkL8EqlK8MyREw6Leru4eJ\nM8jAHnav+JWmtoTmG74ALORvnHaIfBxLZKfKylDc+2G9PbBL9FttLSCamkdwONYp\nBExfIwMLbV0+O4U73SZxq4XO/s+eTgKKk4FbIP5BDgv+l8fDBkHRI+0BAoGBAM3w\n4vFV0j5kCDYgI1f++4IQR46IndO6BdC8nqKJdoheqjMcsSzPC3h8olRq6XUAKWLX\n2HRYwMgO1uh4l0cR4hlvVKb1nkoU6O8LoaVI3lpqFGUjMimsFN+GiTK+zvhkqoIV\njlLEZgbowKkYO2c5gLgZEnm/Q0+LmGRZeF5uP8lDAoGBAIVZOKXQLSWBPIfby1KC\nKowWa5G2Vqpw+Qbr+7/HPoO73sLxwI218sTU+YN/n/xiL1o/CvXGCFR3qzywePgY\n32NdqOiiRcIoJcgaT30pBL/0+7tpcOYOvlxJTfb1Hbksq5EOqVjROlZ0WLDX3Yq/\n8pL+9R+PCWqBSBqdRaWFD4Qk\n-----END PRIVATE KEY-----\n",
+
+==========================================================================
+supabase secrets set FIREBASE_PROJECT_ID="xxx" FIREBASE_CLIENT_EMAIL="xxx@xxx.iam.gserviceaccount.com" FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+====================================================================================
+
+====================================================================================
+Firebase configuration file lib\firebase_options.dart generated successfully with the following Firebase apps:
+
+Platform  Firebase App Id
+web       1:433429123250:web:a9925dcbb53db9747fb9ab
+android   1:433429123250:android:5bdacb7713dbdbf47fb9ab
+ios       1:433429123250:ios:555dd8654b9f7c9f7fb9ab
+macos     1:433429123250:ios:555dd8654b9f7c9f7fb9ab
+windows   1:433429123250:web:cf23ebdc1098d38d7fb9ab
+====================================================================================
+Remove-Item -Recurse -Force build/windows/x64/extracted/firebase_cpp_sdk_windows -ErrorAction SilentlyContinue
+====================================================================================
+Projet URL : yvvtlcwnayuvtkcxnktl
+supabase link --project-ref yvvtlcwnayuvtkcxnktl
+====================================================================================
+Config PayDunya
+
+supabase secrets set PAYDUNYA_API_KEY="xxx"
+supabase secrets set PAYDUNYA_API_SECRET="xxx"
+supabase secrets set PAYDUNYA_MASTER_KEY="xxx"
+supabase secrets set PUBLIC_BASE_URL="https://<project-ref>.supabase.co/functions/v1"
+====================================================================================
+Payment function deployment
+
+supabase functions deploy create_payment_intent
+supabase functions deploy billing_subscribe
+supabase functions deploy payments_callback
+====================================================================================
+PAY DUNYA EMERGENCY KEY 
+
+ED19-QWDB-TVJD-ACHL-XYU9
+MPIR-WSBU-13H5-I4ZJ-8MM9
+5P6Y-IHJA-MXQI-BJIG-L0S4
+YFQ0-XO5H-CDOL-MBHD-MKPK
+ILMF-FFDW-ANQX-CFU5-BE7P
+====================================================================================
+psql "postgresql://postgres:5bb4uAU450nDzlAq@db.yvvtlcwnayuvtkcxnktl.supabase.co:5432/postgres"
+
+postgresql://postgres:5bb4uAU450nDzlAq@db.yvvtlcwnayuvtkcxnktl.supabase.co:5432/postgres
+
+Always failed
+Problem : Dbeaver cannot access the host because it's constrained only to use ipv4
+
+PS D:\Dev\PME_TPE\PME_TPE> nslookup db.yvvtlcwnayuvtkcxnktl.supabase.co
+Server:  adult-filter-dns.cleanbrowsing.org
+Address:  185.228.168.10
+
+Name:    db.yvvtlcwnayuvtkcxnktl.supabase.co
+Address:  2600:1f1c:f9:4d0d:4413:1d21:cde1:1520
+
+PS D:\Dev\PME_TPE\PME_TPE> ping db.yvvtlcwnayuvtkcxnktl.supabase.coping db.yvvtlcwnayuvtkcxnktl.supabase.co
+Ping request could not find host db.yvvtlcwnayuvtkcxnktl.supabase.coping. Please check the name and try again.
+PS D:\Dev\PME_TPE\PME_TPE> ping db.yvvtlcwnayuvtkcxnktl.supabase.co                                 
+Ping request could not find host db.yvvtlcwnayuvtkcxnktl.supabase.co. Please check the name and try again.
+PS D:\Dev\PME_TPE\PME_TPE> Resolve-DnsName db.yvvtlcwnayuvtkcxnktl.supabase.co                      
+
+Name                                           Type   TTL   Section    IPAddress
+----                                           ----   ---   -------    ---------
+db.yvvtlcwnayuvtkcxnktl.supabase.co            AAAA   180   Answer     2600:1f1c:f9:4d0d:4413:1d21:
+                                                                       cde1:1520
+
+PS D:\Dev\PME_TPE\PME_TPE> ping db.yvvtlcwnayuvtkcxnktl.supabase.co                                 
+Ping request could not find host db.yvvtlcwnayuvtkcxnktl.supabase.co. Please check the name and try again.
+PS D:\Dev\PME_TPE\PME_TPE> 
+
+Explanation
+
+Votre sortie montre exactement le problème :
+
+* Votre DNS est **CleanBrowsing “adult-filter”** (`adult-filter-dns.cleanbrowsing.org`).
+* Il vous renvoie **uniquement un enregistrement IPv6 (AAAA)** pour `db….supabase.co` (adresse qui commence par `2600:`).
+* Or, votre machine (et/ou Java/DBeaver) **n’arrive manifestement pas à utiliser IPv6**, donc :
+
+  * `ping` n’arrive même pas à résoudre/consommer ce résultat → “could not find host”
+  * DBeaver → “Unknown host”
+
+Ce n’est pas un souci Supabase/SQL : c’est **DNS + IPv6**.
+
+---
+
+## Solution recommandée (la plus fiable) : quitter CleanBrowsing pour ce PC (ou au moins pour ce réseau)
+
+### 1) Changez le DNS de votre carte réseau
+
+Mettez par exemple **Cloudflare** :
+
+* DNS primaire : `1.1.1.1`
+* DNS secondaire : `1.0.0.1`
+
+(ou Google : `8.8.8.8` / `8.8.4.4`)
+
+### 2) Flush DNS
+
+Dans PowerShell (admin si possible) :
+
+```bat
+ipconfig /flushdns
+```
+
+### 3) Vérifiez que vous avez maintenant un IPv4 (A)
+
+```powershell
+Resolve-DnsName db.yvvtlcwnayuvtkcxnktl.supabase.co -Type A
+Resolve-DnsName db.yvvtlcwnayuvtkcxnktl.supabase.co -Type AAAA
+```
+
+Vous devez voir **Type A** avec une IP du style `xx.xx.xx.xx`.
+
+### 4) Test du port Postgres
+
+```powershell
+Test-NetConnection db.yvvtlcwnayuvtkcxnktl.supabase.co -Port 5432
+```
+
+Si `TcpTestSucceeded : True`, DBeaver va se connecter.
+
+---
+
+## Alternative si vous devez garder CleanBrowsing : activer IPv6 (et avoir une connectivité IPv6 réelle)
+
+1. Panneau de configuration → Réseau → Modifier les options d’adaptateur
+2. Clic droit Wi-Fi/Ethernet → Propriétés
+3. Cochez **Internet Protocol Version 6 (TCP/IPv6)**
+4. Reconnectez le réseau, puis retestez :
+
+```powershell
+ping -6 db.yvvtlcwnayuvtkcxnktl.supabase.co
+Test-NetConnection db.yvvtlcwnayuvtkcxnktl.supabase.co -Port 5432
+```
+
+Si votre FAI/réseau ne fournit pas réellement IPv6, cette voie échouera quand même. Dans ce cas, il faut revenir à la solution DNS (Cloudflare/Google) pour obtenir l’IPv4.
+
+---
+
+## Ajustement DBeaver (optionnel, mais utile)
+
+Après avoir récupéré un **A record**, si DBeaver est encore instable, forcez IPv4 côté Java :
+
+Dans `dbeaver.ini`, après `-vmargs`, ajoutez :
+
+```
+-Djava.net.preferIPv4Stack=true
+-Djava.net.preferIPv4Addresses=true
+```
+
+---
+
+### Ce que je vous conseille de faire maintenant
+
+1. Remplacez le DNS CleanBrowsing par `1.1.1.1 / 1.0.0.1`
+2. `ipconfig /flushdns`
+3. Envoyez-moi le résultat de :
+
+```powershell
+Resolve-DnsName db.yvvtlcwnayuvtkcxnktl.supabase.co -Type A
+Test-NetConnection db.yvvtlcwnayuvtkcxnktl.supabase.co -Port 5432
+```
+
+Avec ces deux lignes, je vous confirme immédiatement si DBeaver va passer et quoi régler (SSL/user/db).
+
+====================================================================================
+Set-DnsClientServerAddress -InterfaceAlias "Realtek RTL8821CE 802.11ac PCIe Adapter" -ServerAddresses 1.1.1.1,1.0.0.1
+ipconfig /flushdns
+Clear-DnsClientCache
+
+====================================================================================
+
+Le défilement “trop dur” : pourquoi et ce qu’on a fait
+
+Sur mobile, PageView attend souvent :
+
+soit une certaine distance de drag,
+
+soit une vitesse minimale de fling
+
+La _SnappyPageScrollPhysics réduit ces seuils, donc un geste plus court suffit.
+
+Si tu veux encore plus “sensibilité” :
+
+baisse minFlingDistance à 5.0
+
+baisse minFlingVelocity à 180.0
+====================================================================================
+
+
+Vision cible “Espace entreprise” (pro)
+Navigation / Modules (back-office)
+
+Dashboard (KPIs + alertes + état abonnement)
+
+Mini-site (profil public, branding, liens, horaires, couverture/logo)
+
+Produits (catalogue, médias, variantes, catégories, publication)
+
+Commandes (inbox des demandes/commandes + statuts)
+
+Membres & Rôles (inviter, retirer, changer rôle)
+
+Paiements / Abonnement (plans, facturation, statut)
+
+Publicité (campagnes, budget, résultats)
+
+Contrat sécurité
+
+Tout ce qui modifie l’entreprise = owner/admin via RLS + RPC/Edge Function.
+
+Accès features = entitlements (source de vérité) : can_receive_orders, can_run_ads, etc. 
+
+Summary_Of_All_done
+
+Les médias produits actuels sont rattachés à product_id (pas variantes) 
+
+Summary_Of_All_done
+
+ ⇒ on va étendre proprement.
+
+Par où on commence (ma décision)
+Étape 1 — “Membres & Rôles” + socle d’architecture
+
+Pourquoi en premier :
+
+Tu veux déléguer (staff/admin) et professionnaliser la gestion.
+
+Ça conditionne la suite (produits, pubs, commandes, paiements), et ça respecte la sécurité existante sur business_members 
+
+Summary_Of_All_done
+
+.
+
+Objectif Étape 1
+
+Ajouter un système d’invitation (email, nom, rôle) sécurisé
+
+UI pro : liste membres + invites + actions (changer rôle / retirer / révoquer)
+
+Deep-link / redirect login → retour automatique sur l’action (comme tu voulais déjà pour continuer un achat)
+
+Étape 1 — Design technique (pro et sécurisé)
+A) Base de données : invitations (sans casser l’existant)
+
+On ajoute une table dédiée (propre, audit-friendly) :
+
+business_invites
+
+id, business_id
+
+invited_email, invited_name
+
+role (owner/admin/staff)
+
+token (unique)
+
+status (pending/accepted/revoked/expired)
+
+created_by, created_at, expires_at, accepted_by, accepted_at
+
+RLS
+
+lecture : membres de l’entreprise
+
+écriture (create/revoke) : owner/admin uniquement (via is_business_member)
+
+RPC (security definer)
+
+create_business_invite(business_id, email, name, role) : vérifie owner/admin, crée l’invite, retourne token
+
+accept_business_invite(token) : vérifie token+expiration, ajoute dans business_members, marque invite acceptée
+
+Ça reste cohérent avec ton approche “helper function” is_business_member(...) 
+
+Summary_Of_All_done
+
+.
+
+B) Envoi invitation (Edge Function) — option pro
+
+Edge Function send_business_invite (service role) : envoie email contenant un lien
+
+Lien : https://.../invite/<token> + deep link mobile pmetpe://invite/<token>
+
+Si tu ne veux pas gérer email maintenant : on fait un MVP “copier le lien” (toujours propre).
+
+C) Flutter (UI/UX)
+
+MembersPage(businessId) :
+
+section “Membres” (liste, rôle)
+
+section “Invitations en attente”
+
+actions si owner/admin : Inviter, Changer rôle, Retirer, Révoquer
+
+InviteAcceptPage(token) :
+
+si pas logged-in → redirect /login?next=/invite/<token>
+
+après login → appelle accept_business_invite(token) puis redirige vers /home ou vers la page membres
+
+Ensuite (Étapes 2 → 4), pour que tu voies la trajectoire
+Étape 2 — Paiements → Déblocage “Accepter les commandes”
+
+Tu as déjà le modèle : entitlements contient can_receive_orders 
+
+Summary_Of_All_done
+
+.
+
+UI : toggle “Accepter les commandes”
+
+si entitlement off → bouton “Passer Pro”
+
+Backend : quand paiement OK → update subscription/entitlements
+
+Sécurité : côté création de commande (service_request) tu peux bloquer si can_receive_orders=false (RPC/trigger ou côté Edge Function).
+
+Étape 3 — Publicité (Ads)
+
+Ton schéma prévoit déjà can_run_ads 
+
+Summary_Of_All_done
+
+.
+
+UI : création campagne (budget, durée, ciblage simple)
+
+Backend : pondération ranking Explore via visibility_multiplier + campaigns actives
+
+Étape 4 — Produits (édition pro)
+
+Améliorations cibles :
+
+Wizard “Produit”
+
+infos
+
+médias (image/video)
+
+catégories
+
+variantes (avec médias par variante)
+
+publication (checklist)
+
+Pour les médias de variantes : comme product_media est uniquement par product_id 
+
+Summary_Of_All_done
+
+, on ajoute soit :
+
+table product_variant_media (recommandé), soit
+
+colonne variant_id nullable dans product_media (plus risqué si déjà en prod)
+====================================================================================
+
+
+
+
+
+

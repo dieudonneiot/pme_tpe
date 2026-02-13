@@ -1,0 +1,41 @@
+PME_TPE - Work Summary Log
+
+Rule:
+- After every change/task, append an entry here with: problem, resolution, and key code techniques/files.
+
+--------------------------------------------------------------------------------
+2026-02-13 - Fix Windows (Flutter) build + clean analyzer
+
+Problem
+- Windows build failed with CMake errors from FlutterFire `firebase_core` on Windows:
+  - Missing `windows/flutter/ephemeral/generated_config.cmake` after clean / not generated yet.
+  - Firebase C++ SDK download/extract issues caused missing targets/libs (e.g. `firebase_app.lib`),
+    leading to cascaded CMake errors.
+- IDE showed many Dart analyzer items (unused locals, TODOs, deprecated API usage, and control flow issues).
+
+Resolution
+- Restored a reliable Windows build by ensuring the Firebase C++ SDK is available locally and stable:
+  - Cached the SDK under `%LOCALAPPDATA%\\PME_TPE\\firebase_cpp_sdk_windows_12.7.0\\firebase_cpp_sdk_windows`
+    and set `FIREBASE_CPP_SDK_DIR` so CMake uses the local copy instead of downloading into `build/`.
+  - Verified `flutter build windows` succeeds.
+- Fixed Dart analyzer/lints so `flutter analyze` is clean.
+- Removed in-repo SDK artifacts from `app/build/windows/x64` (zip + extracted folder) to keep the repo clean.
+
+Key techniques / code changes
+- Added PowerShell helpers:
+  - `app/tools/ensure_firebase_cpp_sdk.ps1`:
+    - Downloads/extracts the SDK once using BITS (or copies from the old build cache if present).
+    - Writes/sets `FIREBASE_CPP_SDK_DIR` when requested.
+  - `app/tools/build_windows.ps1`:
+    - Ensures SDK is present, sets env var, runs `flutter build windows`.
+- IDE integration:
+  - `app/.vscode/settings.json` sets `cmake.configureEnvironment` + `cmake.buildEnvironment` with `FIREBASE_CPP_SDK_DIR`
+    so VS Code CMake Tools can configure/build without manual env setup.
+- Documentation:
+  - `app/README.md` documents the Windows build command using the script.
+- Dart code hygiene:
+  - Removed unused locals, replaced TODO-only handlers with minimal behavior where appropriate,
+    removed `return` inside `finally` by using `if (mounted) setState(...)`,
+    replaced deprecated `withOpacity` with `withAlpha`,
+    replaced unnecessary underscore callback params with `_`.
+

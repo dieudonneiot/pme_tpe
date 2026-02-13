@@ -1,0 +1,9 @@
+{
+    "cmake.sourceDirectory": "${workspaceFolder}/app/windows",
+    "cmake.configureEnvironment": {
+        "FIREBASE_CPP_SDK_DIR": "${env:LOCALAPPDATA}\\PME_TPE\\firebase_cpp_sdk_windows_12.7.0\\firebase_cpp_sdk_windows"
+    },
+    "cmake.buildEnvironment": {
+        "FIREBASE_CPP_SDK_DIR": "${env:LOCALAPPDATA}\\PME_TPE\\firebase_cpp_sdk_windows_12.7.0\\firebase_cpp_sdk_windows"
+    }
+}
