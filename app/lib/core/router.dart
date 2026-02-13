@@ -11,7 +11,7 @@ import '../features/business/business_links_page.dart';
 import '../features/business/business_settings_page.dart';
 import '../features/business/create_business_page.dart';
 import '../features/business/public_business_page.dart';
-import '../features/explore/explore_page.dart';
+import '../features/explore/explore_businesses_page.dart';
 import '../features/home/home_page.dart';
 import '../features/posts/business_posts_page.dart';
 import '../features/products/business_products_page.dart';
@@ -54,7 +54,7 @@ final appRouter = GoRouter(
   routes: [
     // PUBLIC
     GoRoute(path: '/', builder: (_, _) => const LandingPage()),
-    GoRoute(path: '/explore', builder: (_, _) => const ExplorePage()),
+    GoRoute(path: '/explore', builder: (_, _) => const ExploreBusinessesPage()),
     GoRoute(
       path: '/b/:slug',
       builder: (_, state) =>

@@ -180,3 +180,27 @@ Key techniques / files
 - `app/lib/features/public/landing_page.dart`: responsive layout using `SingleChildScrollView`, `GridView` sections,
   and Supabase query for featured businesses.
 - `app/lib/core/router.dart`: `initialLocation` set to `/`.
+
+--------------------------------------------------------------------------------
+2026-02-13 - Public directory: /explore businesses + filters + infinite scroll
+
+Goal
+- Make `/explore` a real public “Entreprises” directory with:
+  - Filters (category, city/region)
+  - Sorting
+  - Pagination / infinite scrolling
+  - Better loading/empty/error UX
+
+Implementation
+- Added a dedicated public directory page:
+  - Search (name/slug/description)
+  - Category filter (keyword-based until a dedicated business category column exists)
+  - Region filter (matches `address_text` with multiple patterns)
+  - Sort options (verified-first, newest, A→Z)
+  - Infinite scroll (loads next page when near bottom)
+  - Refresh + retry + reset filters
+- Routed `/explore` to this new page.
+
+Key files
+- `app/lib/features/explore/explore_businesses_page.dart`
+- `app/lib/core/router.dart`
