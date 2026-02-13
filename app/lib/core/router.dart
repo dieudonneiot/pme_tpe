@@ -26,7 +26,7 @@ final _authRefresh = GoRouterRefreshStream(
 
 final appRouter = GoRouter(
   refreshListenable: _authRefresh,
-  initialLocation: '/explore',
+  initialLocation: '/',
   redirect: (context, state) {
     final path = state.uri.path;
 

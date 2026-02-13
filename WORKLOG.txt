@@ -160,3 +160,23 @@ Resolution
 Key files
 - `app/lib/main.dart`
 - `app/lib/features/cart/cart_scope.dart`
+
+--------------------------------------------------------------------------------
+2026-02-13 - New Landing/Home page (from Accueil.html template)
+
+Problem / goal
+- Replace the minimal public landing page with a real “Accueil” UI inspired by `d:\\Dev\\template_pme\\Accueil.html`
+  (hero gradient, search, categories, featured businesses, footer).
+
+Resolution
+- Reimplemented the public landing page with a modern Material 3 layout:
+  - Hero gradient (orange → amber) + search box (query + region selector).
+  - Categories grid (icons + labels).
+  - “Entreprises en vedette” section backed by Supabase query (includes logo/cover paths when present).
+  - Footer with contact info.
+- Set router start page to `/` (landing) instead of `/explore`.
+
+Key techniques / files
+- `app/lib/features/public/landing_page.dart`: responsive layout using `SingleChildScrollView`, `GridView` sections,
+  and Supabase query for featured businesses.
+- `app/lib/core/router.dart`: `initialLocation` set to `/`.
