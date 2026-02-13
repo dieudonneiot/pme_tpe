@@ -120,3 +120,22 @@ Resolution
   - ensure/set `FIREBASE_CPP_SDK_DIR` (uses the cached SDK in `%LOCALAPPDATA%`)
   - run `flutter run -d windows --dart-define-from-file=env.json` automatically when `env.json` exists.
 - Updated `app/README.md` to document the new run script.
+
+--------------------------------------------------------------------------------
+2026-02-13 - Runtime auth error: Supabase host lookup failed (errno 11001)
+
+Problem
+- App shows `AuthRetryableFetchException` with `SocketException: Failed host lookup ... (errno = 11001)` when calling:
+  - `https://<ref>.supabase.co/auth/v1/token?grant_type=refresh_token`
+
+Cause
+- DNS cannot resolve the configured Supabase project host, which means `SUPABASE_URL` is pointing to a non-existent
+  or incorrect project domain (NXDOMAIN). This fails before any HTTP response is received (`statusCode: null`).
+
+Resolution
+- Verify/copy the correct Project URL from Supabase Dashboard (Project Settings → API → URL).
+- Update `app/env.json` (local-only, ignored) or pass the correct defines at launch.
+- Use `app/tools/run_windows.ps1` so the app runs with `--dart-define-from-file=env.json`.
+
+Verification
+- `Resolve-DnsName <ref>.supabase.co` / `nslookup <ref>.supabase.co 1.1.1.1` should return an IP when correct.
