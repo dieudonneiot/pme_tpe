@@ -72,3 +72,17 @@ Key techniques / commands
   - `git commit-tree <tree> -p origin/main -m "<msg>"` then `git reset --hard <new_sha>`
 - Secret redaction:
   - Replace client IDs/secrets with `<REDACTED>` in `docs/summary2_of_all_done.txt`.
+
+--------------------------------------------------------------------------------
+2026-02-13 - Ignore/remove docs artifacts from Git
+
+Problem
+- The `docs/` folder contains large PDFs and scratch summary `.txt` files that should not be versioned.
+
+Resolution
+- Added ignores so future PDFs and the whole `docs/` folder are not committed.
+- Removed the already-tracked `docs/` files from the Git index (kept locally) so they stop being pushed.
+
+Key techniques / files
+- `.gitignore`: ignore `docs/` and `*.pdf`.
+- `git rm -r --cached docs`: untrack docs without deleting local files.

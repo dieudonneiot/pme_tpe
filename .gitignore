@@ -43,6 +43,10 @@ $RECYCLE.BIN/
 **/cmake_install.cmake
 **/install_manifest.txt
 
+# ---- Local docs/artifacts (do not commit) ----
+docs/
+*.pdf
+
 # Dart / Flutter (in case you run tooling from repo root)
 **/.dart_tool/
 **/.flutter-plugins
