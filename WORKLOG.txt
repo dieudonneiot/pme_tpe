@@ -204,3 +204,28 @@ Implementation
 Key files
 - `app/lib/features/explore/explore_businesses_page.dart`
 - `app/lib/core/router.dart`
+
+--------------------------------------------------------------------------------
+2026-02-13 - DB-driven business categories (Supabase) + UI integration
+
+Problem / goal
+- Categories in `/explore` were keyword-based (hardcoded) because the database had no real category table/relationship.
+- Goal: make categories “real” by adding a DB-driven category column / table in Supabase and wiring the app to it.
+
+Resolution
+- Added a local Supabase SQL scratchpad folder (ignored by Git) and provided SQL to create:
+  - `public.business_categories` (id/slug/name/sort_order)
+  - `public.businesses.business_category_id` FK to `business_categories`
+  - RLS policies so categories can be publicly readable
+- Updated `/explore`:
+  - Loads categories from `business_categories` when available.
+  - Filters via `eq('business_category_id', <uuid>)` (fallbacks to the previous keyword-based filter when schema isn’t ready).
+- Updated business settings page:
+  - Loads categories from `business_categories`.
+  - Adds a category dropdown and saves `business_category_id` on the business.
+
+Key files
+- `app/_supabase_sql/README.md` (copy/paste SQL)
+- `app/_supabase_sql/business_categories.sql` (local script, ignored)
+- `app/lib/features/explore/explore_businesses_page.dart`
+- `app/lib/features/business/business_settings_page.dart`

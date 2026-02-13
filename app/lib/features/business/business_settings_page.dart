@@ -3,6 +3,26 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+class _BusinessCategory {
+  final String id;
+  final String name;
+  final int sortOrder;
+
+  const _BusinessCategory({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+  });
+
+  factory _BusinessCategory.fromRow(Map<String, dynamic> row) {
+    return _BusinessCategory(
+      id: (row['id'] ?? '').toString(),
+      name: (row['name'] ?? '').toString(),
+      sortOrder: (row['sort_order'] is int) ? row['sort_order'] as int : 0,
+    );
+  }
+}
+
 class BusinessSettingsPage extends StatefulWidget {
   final String businessId;
   const BusinessSettingsPage({super.key, required this.businessId});
@@ -23,6 +43,10 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   final _whatsapp = TextEditingController();
   final _address = TextEditingController();
   final _desc = TextEditingController();
+
+  bool _dbCategoriesAvailable = false;
+  final _categories = <_BusinessCategory>[];
+  String _selectedCategoryId = '';
 
   @override
   void initState() {
@@ -60,24 +84,91 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
       await _ensureAuthenticated();
 
       final sb = Supabase.instance.client;
-      final row = await sb
-          .from('businesses')
-          .select(
-            'id,name,slug,description,whatsapp_phone,address_text,logo_path,cover_path',
-          )
-          .eq('id', widget.businessId)
-          .single();
+      Map<String, dynamic> row;
+      var hasCategoryColumn = true;
+      try {
+        row = await sb
+            .from('businesses')
+            .select(
+              'id,name,slug,description,whatsapp_phone,address_text,logo_path,cover_path,business_category_id',
+            )
+            .eq('id', widget.businessId)
+            .single();
+      } on PostgrestException catch (e) {
+        if (e.message.contains('business_category_id')) {
+          hasCategoryColumn = false;
+          row = await sb
+              .from('businesses')
+              .select(
+                'id,name,slug,description,whatsapp_phone,address_text,logo_path,cover_path',
+              )
+              .eq('id', widget.businessId)
+              .single();
+        } else {
+          rethrow;
+        }
+      }
 
       business = row;
       _whatsapp.text = (row['whatsapp_phone'] ?? '') as String;
       _address.text = (row['address_text'] ?? '') as String;
       _desc.text = (row['description'] ?? '') as String;
+
+      if (hasCategoryColumn) {
+        _selectedCategoryId = (row['business_category_id'] ?? '').toString();
+        await _loadDbCategories();
+      } else {
+        _dbCategoriesAvailable = false;
+        _categories.clear();
+        _selectedCategoryId = '';
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<void> _loadDbCategories() async {
+    try {
+      final sb = Supabase.instance.client;
+      final resp = await sb
+          .from('business_categories')
+          .select('id,name,sort_order')
+          .order('sort_order', ascending: true)
+          .order('name', ascending: true);
+
+      final rows = (resp as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final cats = rows.map(_BusinessCategory.fromRow).where((c) => c.id.isNotEmpty).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = true;
+        _categories
+          ..clear()
+          ..addAll(cats);
+
+        final ids = _categories.map((c) => c.id).toSet();
+        if (_selectedCategoryId.isNotEmpty && !ids.contains(_selectedCategoryId)) {
+          _selectedCategoryId = '';
+        }
+      });
+    } on PostgrestException {
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = false;
+        _categories.clear();
+        _selectedCategoryId = '';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = false;
+        _categories.clear();
+        _selectedCategoryId = '';
+      });
     }
   }
 
@@ -177,17 +268,20 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
       await _ensureAuthenticated();
 
       final sb = Supabase.instance.client;
+      final update = <String, dynamic>{
+        'whatsapp_phone': _whatsapp.text.trim().isEmpty ? null : _whatsapp.text.trim(),
+        'address_text': _address.text.trim().isEmpty ? null : _address.text.trim(),
+        'description': _desc.text.trim().isEmpty ? null : _desc.text.trim(),
+      };
+
+      if (_dbCategoriesAvailable) {
+        update['business_category_id'] =
+            _selectedCategoryId.trim().isEmpty ? null : _selectedCategoryId.trim();
+      }
+
       await sb
           .from('businesses')
-          .update({
-            'whatsapp_phone': _whatsapp.text.trim().isEmpty
-                ? null
-                : _whatsapp.text.trim(),
-            'address_text': _address.text.trim().isEmpty
-                ? null
-                : _address.text.trim(),
-            'description': _desc.text.trim().isEmpty ? null : _desc.text.trim(),
-          })
+          .update(update)
           .eq('id', widget.businessId);
 
       await _load();
@@ -338,6 +432,28 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 10),
+
+                if (_dbCategoriesAvailable) ...[
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(_selectedCategoryId),
+                    initialValue: _selectedCategoryId.isEmpty ? '' : _selectedCategoryId,
+                    decoration: const InputDecoration(labelText: 'Catégorie'),
+                    items: [
+                      const DropdownMenuItem(
+                        value: '',
+                        child: Text('Aucune'),
+                      ),
+                      ..._categories.map(
+                        (c) => DropdownMenuItem(
+                          value: c.id,
+                          child: Text(c.name),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _selectedCategoryId = v ?? ''),
+                  ),
+                  const SizedBox(height: 10),
+                ],
 
                 TextField(
                   controller: _whatsapp,

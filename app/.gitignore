@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Local Supabase SQL scratchpad (ignored)
+_supabase_sql/*
+!_supabase_sql/.gitkeep
+!_supabase_sql/README.md
+
 # Symbolication related
 app.*.symbols
 

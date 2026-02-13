@@ -1,3 +1,4 @@
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,35 @@ class ExploreBusinessesPage extends StatefulWidget {
 }
 
 enum _SortOption { newest, verifiedFirst, nameAz }
+
+class _DbCategory {
+  final String id;
+  final String slug;
+  final String name;
+  final int sortOrder;
+
+  const _DbCategory({
+    required this.id,
+    required this.slug,
+    required this.name,
+    required this.sortOrder,
+  });
+
+  factory _DbCategory.fromRow(Map<String, dynamic> row) {
+    return _DbCategory(
+      id: (row['id'] ?? '').toString(),
+      slug: (row['slug'] ?? '').toString(),
+      name: (row['name'] ?? '').toString(),
+      sortOrder: (row['sort_order'] is int) ? row['sort_order'] as int : 0,
+    );
+  }
+}
+
+class _CategoryOption {
+  final String value;
+  final String label;
+  const _CategoryOption({required this.value, required this.label});
+}
 
 class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
   final _sb = Supabase.instance.client;
@@ -31,6 +61,9 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
   String _category = '';
   _SortOption _sort = _SortOption.verifiedFirst;
 
+  bool _dbCategoriesAvailable = false;
+  final _dbCategories = <_DbCategory>[];
+
   final _items = <Map<String, dynamic>>[];
 
   static const _logoBucket = 'business_logos';
@@ -38,30 +71,39 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
 
   static const _regions = <String, List<String>>{
     '': [''],
-    'Lomé': ['Lomé', 'Lome', 'LomÃ©', 'LomÃ©'],
-    'Kpalimé': ['Kpalimé', 'Kpalime', 'KpalimÃ©'],
-    'Sokodé': ['Sokodé', 'Sokode', 'SokodÃ©'],
+    'Lomé': ['Lomé', 'Lome', 'LomÃ©', 'LomÃƒÂ©', 'LomÃƒÂ©'],
+    'Kpalimé': ['Kpalimé', 'Kpalime', 'KpalimÃ©', 'KpalimÃƒÂ©'],
+    'Sokodé': ['Sokodé', 'Sokode', 'SokodÃ©', 'SokodÃƒÂ©'],
     'Kara': ['Kara'],
-    'Tsévié': ['Tsévié', 'Tsevie', 'TsÃ©viÃ©'],
+    'Tsévié': ['Tsévié', 'Tsevie', 'TsÃ©viÃ©', 'TsÃƒÂ©viÃƒÂ©'],
   };
 
   static const _categories = <String, List<String>>{
     '': [''],
-    'Beauté': ['coiff', 'salon', 'beaute', 'beauté'],
-    'Restauration': ['restaurant', 'resto', 'traiteur', 'cuisine', 'bar', 'café', 'cafe'],
+    'Beauté': ['coiff', 'salon', 'beaute', 'beauté', 'beautÃ©', 'BeautÃ©'],
+    'Restauration': ['restaurant', 'resto', 'traiteur', 'cuisine', 'bar', 'café', 'cafe', 'cafÃ©'],
     'BTP': ['btp', 'construction', 'quincaillerie', 'chantier'],
     'Transport': ['transport', 'livraison', 'logistique', 'taxi'],
-    'Commerce': ['boutique', 'commerce', 'magasin', 'market', 'marché', 'marche'],
-    'Santé': ['santé', 'sante', 'pharmacie', 'clinique', 'cabinet'],
-    'Éducation': ['école', 'ecole', 'formation', 'cours'],
-    'Tech': ['tech', 'informatique', 'numérique', 'numerique', 'développement', 'developpement'],
+    'Commerce': ['boutique', 'commerce', 'magasin', 'market', 'marché', 'marche', 'marchÃ©'],
+    'Santé': ['santé', 'sante', 'santÃ©', 'pharmacie', 'clinique', 'cabinet'],
+    'Éducation': ['école', 'ecole', 'Ã©cole', 'formation', 'cours'],
+    'Tech': [
+      'tech',
+      'informatique',
+      'numérique',
+      'numerique',
+      'numÃ©rique',
+      'développement',
+      'developpement',
+      'dÃ©veloppement',
+    ],
   };
 
   @override
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
-    _loadInitial();
+    unawaited(_reloadAll());
   }
 
   @override
@@ -81,6 +123,54 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
     }
   }
 
+  Future<void> _initDbCategoriesSupport() async {
+    try {
+      final resp = await _sb
+          .from('business_categories')
+          .select('id,slug,name,sort_order')
+          .order('sort_order', ascending: true)
+          .order('name', ascending: true);
+
+      final rows = (resp as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final cats = rows.map(_DbCategory.fromRow).where((c) => c.id.isNotEmpty).toList();
+
+      // Detect if the businesses column exists (query fails if not).
+      await _sb.from('businesses').select('business_category_id').limit(1);
+
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = true;
+        _dbCategories
+          ..clear()
+          ..addAll(cats);
+
+        // If we were previously in legacy mode, the selected value might not be a UUID.
+        final ids = _dbCategories.map((c) => c.id).toSet();
+        if (_category.isNotEmpty && !ids.contains(_category)) {
+          _category = '';
+        }
+      });
+    } on PostgrestException {
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = false;
+        _dbCategories.clear();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = false;
+        _dbCategories.clear();
+      });
+    }
+  }
+
+  Future<void> _reloadAll() async {
+    await _initDbCategoriesSupport();
+    if (!mounted) return;
+    await _loadInitial();
+  }
+
   String? _publicUrl(String bucket, String? path) {
     if (path == null || path.isEmpty) return null;
     return _sb.storage.from(bucket).getPublicUrl(path);
@@ -90,7 +180,18 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
     return input.trim().replaceAll(RegExp(r'[(),]'), ' ');
   }
 
-  String? _buildOrFilter({required String query, required String category}) {
+  String? _buildSearchOrFilter(String query) {
+    final q = _sanitizeFilterValue(query);
+    if (q.isEmpty) return null;
+    final pat = '%$q%';
+    return [
+      'name.ilike.$pat',
+      'slug.ilike.$pat',
+      'description.ilike.$pat',
+    ].join(',');
+  }
+
+  String? _buildLegacyOrFilter({required String query, required String category}) {
     final q = _sanitizeFilterValue(query);
     final c = category.trim();
 
@@ -121,19 +222,31 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
   }
 
   PostgrestTransformBuilder<PostgrestList> _buildQuery() {
+    final selectFields = _dbCategoriesAvailable
+        ? 'id,name,slug,description,is_active,is_verified,whatsapp_phone,address_text,logo_path,cover_path,business_category_id,created_at'
+        : 'id,name,slug,description,is_active,is_verified,whatsapp_phone,address_text,logo_path,cover_path,created_at';
+
     PostgrestFilterBuilder<PostgrestList> f = _sb
         .from('businesses')
-        .select(
-          'id,name,slug,description,is_active,is_verified,whatsapp_phone,address_text,logo_path,cover_path,created_at',
-        )
+        .select(selectFields)
         .eq('is_active', true);
 
-    final orFilter = _buildOrFilter(
-      query: _search.text,
-      category: _category,
-    );
-    if (orFilter != null) {
-      f = f.or(orFilter);
+    if (_dbCategoriesAvailable) {
+      final searchOr = _buildSearchOrFilter(_search.text);
+      if (searchOr != null) {
+        f = f.or(searchOr);
+      }
+      if (_category.trim().isNotEmpty) {
+        f = f.eq('business_category_id', _category.trim());
+      }
+    } else {
+      final orFilter = _buildLegacyOrFilter(
+        query: _search.text,
+        category: _category,
+      );
+      if (orFilter != null) {
+        f = f.or(orFilter);
+      }
     }
 
     final regionPatterns = _regions[_region] ?? const <String>[];
@@ -227,6 +340,22 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final contentMaxWidth = math.min(1100.0, width);
+    final categories = _dbCategoriesAvailable
+        ? [
+            const _CategoryOption(value: '', label: 'Toutes'),
+            ..._dbCategories.map((c) => _CategoryOption(value: c.id, label: c.name)),
+          ]
+        : const [
+            _CategoryOption(value: '', label: 'Toutes'),
+            _CategoryOption(value: 'Beauté', label: 'Beauté'),
+            _CategoryOption(value: 'Restauration', label: 'Restauration'),
+            _CategoryOption(value: 'BTP', label: 'BTP'),
+            _CategoryOption(value: 'Transport', label: 'Transport'),
+            _CategoryOption(value: 'Commerce', label: 'Commerce'),
+            _CategoryOption(value: 'Santé', label: 'Santé'),
+            _CategoryOption(value: 'Éducation', label: 'Éducation'),
+            _CategoryOption(value: 'Tech', label: 'Tech'),
+          ];
 
     return Scaffold(
       appBar: AppBar(
@@ -234,14 +363,14 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
         actions: [
           IconButton(
             tooltip: 'Rafraîchir',
-            onPressed: _loadInitial,
+            onPressed: _reloadAll,
             icon: const Icon(Icons.refresh),
           ),
           const SizedBox(width: 6),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _loadInitial,
+        onRefresh: _reloadAll,
         child: ListView(
           controller: _scroll,
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
@@ -256,6 +385,7 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
                       search: _search,
                       region: _region,
                       category: _category,
+                      categories: categories,
                       sort: _sort,
                       onChangedRegion: (v) => _applyFilters(region: v),
                       onChangedCategory: (v) => _applyFilters(category: v),
@@ -274,7 +404,7 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
                     else if (_error != null)
                       _ErrorBlock(
                         message: _error!,
-                        onRetry: _loadInitial,
+                        onRetry: _reloadAll,
                       )
                     else if (_items.isEmpty)
                       _EmptyBlock(
@@ -346,6 +476,7 @@ class _FiltersCard extends StatelessWidget {
   final TextEditingController search;
   final String region;
   final String category;
+  final List<_CategoryOption> categories;
   final _SortOption sort;
 
   final ValueChanged<String> onChangedRegion;
@@ -358,6 +489,7 @@ class _FiltersCard extends StatelessWidget {
     required this.search,
     required this.region,
     required this.category,
+    required this.categories,
     required this.sort,
     required this.onChangedRegion,
     required this.onChangedCategory,
@@ -407,7 +539,11 @@ class _FiltersCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: _CategoryDropdown(value: category, onChanged: onChangedCategory),
+                        child: _CategoryDropdown(
+                          value: category,
+                          categories: categories,
+                          onChanged: onChangedCategory,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(child: _SortDropdown(value: sort, onChanged: onChangedSort)),
@@ -417,7 +553,11 @@ class _FiltersCard extends StatelessWidget {
                     children: [
                       _RegionDropdown(value: region, onChanged: onChangedRegion),
                       const SizedBox(height: 10),
-                      _CategoryDropdown(value: category, onChanged: onChangedCategory),
+                      _CategoryDropdown(
+                        value: category,
+                        categories: categories,
+                        onChanged: onChangedCategory,
+                      ),
                       const SizedBox(height: 10),
                       _SortDropdown(value: sort, onChanged: onChangedSort),
                     ],
@@ -484,23 +624,16 @@ class _RegionDropdown extends StatelessWidget {
 
 class _CategoryDropdown extends StatelessWidget {
   final String value;
+  final List<_CategoryOption> categories;
   final ValueChanged<String> onChanged;
-  const _CategoryDropdown({required this.value, required this.onChanged});
+  const _CategoryDropdown({
+    required this.value,
+    required this.categories,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const items = <String>[
-      '',
-      'Beauté',
-      'Restauration',
-      'BTP',
-      'Transport',
-      'Commerce',
-      'Santé',
-      'Éducation',
-      'Tech',
-    ];
-
     return DropdownButtonFormField<String>(
       key: ValueKey(value),
       initialValue: value,
@@ -508,11 +641,11 @@ class _CategoryDropdown extends StatelessWidget {
         labelText: 'Catégorie',
         prefixIcon: Icon(Icons.category),
       ),
-      items: items
+      items: categories
           .map(
             (c) => DropdownMenuItem(
-              value: c,
-              child: Text(c.isEmpty ? 'Toutes' : c),
+              value: c.value,
+              child: Text(c.label),
             ),
           )
           .toList(),
@@ -824,3 +957,6 @@ class _LogoFallback extends StatelessWidget {
     );
   }
 }
+
+
+
