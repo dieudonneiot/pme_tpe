@@ -39,3 +39,36 @@ Key techniques / code changes
     replaced deprecated `withOpacity` with `withAlpha`,
     replaced unnecessary underscore callback params with `_`.
 
+--------------------------------------------------------------------------------
+2026-02-13 - Fix Git push (HTTP 408) + GitHub push-protection block
+
+Problem
+- `git push -u origin main` failed with:
+  - `RPC failed; HTTP 408` / unexpected disconnect.
+- After removing the huge payload, GitHub rejected the push with GH013 push protection:
+  - Secrets detected in `docs/summary2_of_all_done.txt` (Google OAuth Client ID + Client Secret).
+
+Root cause
+- The local commits that were being pushed contained very large build artifacts under `build/`
+  (Firebase C++ SDK zip + extracted `.lib` files and build outputs). This made the push extremely large,
+  causing timeouts over HTTPS.
+- GitHub push protection blocks any push that contains secrets in any commit being pushed (even if later
+  commits delete/redact them).
+
+Resolution
+- Identified the largest blobs in the outgoing commit range using:
+  - `git rev-list --objects origin/main..main` + `git cat-file --batch-check` (sorted by object size).
+- Rewrote local history (without rewriting remote history) by recreating a clean snapshot commit on top
+  of `origin/main` using `git commit-tree`, then `git reset --hard` to that new commit.
+  - This removed `build/` artifacts from the outgoing history entirely.
+- Redacted OAuth values in `docs/summary2_of_all_done.txt`, then recreated the snapshot commit again so
+  the secrets never appear in any pushed commit.
+- Push succeeded after rewrite and redaction.
+
+Key techniques / commands
+- Large object audit:
+  - `git rev-list --objects origin/main..main` + `git cat-file --batch-check`
+- History cleanup without sending bad commits:
+  - `git commit-tree <tree> -p origin/main -m "<msg>"` then `git reset --hard <new_sha>`
+- Secret redaction:
+  - Replace client IDs/secrets with `<REDACTED>` in `docs/summary2_of_all_done.txt`.
