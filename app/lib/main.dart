@@ -6,6 +6,8 @@ import 'firebase_options.dart';
 import 'core/env.dart';
 import 'core/router.dart';
 import 'core/notifications/push_service.dart';
+import 'features/cart/cart_scope.dart';
+import 'features/cart/cart_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,40 +31,56 @@ Future<void> main() async {
   });
 }
 
-class App extends StatelessWidget {
+class App extends StatefulWidget {
   const App({super.key});
+
+  @override
+  State<App> createState() => _AppState();
+}
+
+class _AppState extends State<App> {
+  final CartService _cart = CartService();
+
+  @override
+  void dispose() {
+    _cart.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final seed = const Color(0xFF4F46E5); // indigo premium
 
-    return MaterialApp.router(
-      title: 'PME/TPE',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: seed,
-        brightness: Brightness.light,
-        cardTheme: CardThemeData(
-          elevation: 1,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    return CartScope(
+      cart: _cart,
+      child: MaterialApp.router(
+        title: 'PME/TPE',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorSchemeSeed: seed,
+          brightness: Brightness.light,
+          cardTheme: CardThemeData(
+            elevation: 1,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
           ),
         ),
+        darkTheme: ThemeData(
+          useMaterial3: true,
+          colorSchemeSeed: seed,
+          brightness: Brightness.dark,
+        ),
+        routerConfig: appRouter,
       ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: seed,
-        brightness: Brightness.dark,
-      ),
-      routerConfig: appRouter,
     );
   }
 }

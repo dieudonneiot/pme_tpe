@@ -139,3 +139,24 @@ Resolution
 
 Verification
 - `Resolve-DnsName <ref>.supabase.co` / `nslookup <ref>.supabase.co 1.1.1.1` should return an IP when correct.
+
+--------------------------------------------------------------------------------
+2026-02-13 - Runtime crash: CartScope not found
+
+Problem
+- Red screen with assertion:
+  - `CartScope not found. Wrap MaterialApp with CartScope.`
+  - Triggered by calls to `CartScope.of(context)` (e.g., cart/checkout/product pages).
+
+Cause
+- `CartScope` (an `InheritedNotifier<CartService>`) was never inserted into the widget tree above `MaterialApp.router`,
+  so `dependOnInheritedWidgetOfExactType<CartScope>()` returned null.
+
+Resolution
+- Wrapped the app root with `CartScope` and kept a single `CartService` instance for the lifetime of the app:
+  - Converted `App` to `StatefulWidget` to own/dispose the `CartService`.
+  - Wrapped `MaterialApp.router` with `CartScope(cart: _cart, child: ...)`.
+
+Key files
+- `app/lib/main.dart`
+- `app/lib/features/cart/cart_scope.dart`
