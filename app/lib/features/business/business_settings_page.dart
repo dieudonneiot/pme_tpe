@@ -134,11 +134,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   Future<void> _loadDbCategories() async {
     try {
       final sb = Supabase.instance.client;
-      final resp = await sb
-          .from('business_categories')
-          .select('id,name,sort_order')
-          .order('sort_order', ascending: true)
-          .order('name', ascending: true);
+      final resp = await sb.from('categories').select('id,name').order('name', ascending: true);
 
       final rows = (resp as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       final cats = rows.map(_BusinessCategory.fromRow).where((c) => c.id.isNotEmpty).toList();

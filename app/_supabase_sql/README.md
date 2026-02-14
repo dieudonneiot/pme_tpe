@@ -10,61 +10,18 @@ Use `business_categories.sql` (or copy/paste the SQL below) in Supabase SQL Edit
 -- Required for gen_random_uuid()
 create extension if not exists pgcrypto;
 
--- 1) Categories table
-create table if not exists public.business_categories (
-  id uuid primary key default gen_random_uuid(),
-  slug text not null unique,
-  name text not null,
-  sort_order int not null default 0,
-  created_at timestamptz not null default now()
-);
+-- IMPORTANT
+-- Your schema already contains a table named `public.business_categories`, but it is a *mapping table*
+-- (business_id, category_id) referencing `public.categories`.
+-- So we use `public.categories` as the category list, and store the "primary" category on `public.businesses`.
 
--- If you previously created `business_categories` without an `id` column,
--- this makes the schema compatible with FK references to (id).
-do $$
-begin
-  if not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'business_categories'
-      and column_name = 'id'
-  ) then
-    alter table public.business_categories add column id uuid;
-    update public.business_categories set id = gen_random_uuid() where id is null;
-    alter table public.business_categories alter column id set default gen_random_uuid();
-    alter table public.business_categories alter column id set not null;
-  end if;
+-- 1) Category list: ensure `public.categories` has the extra fields we want
+alter table public.categories add column if not exists slug text;
+alter table public.categories add column if not exists sort_order int not null default 0;
 
-  if not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'business_categories'
-      and column_name = 'sort_order'
-  ) then
-    alter table public.business_categories add column sort_order int not null default 0;
-  end if;
-
-  if not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'business_categories'
-      and column_name = 'created_at'
-  ) then
-    alter table public.business_categories add column created_at timestamptz not null default now();
-  end if;
-
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'business_categories_id_uniq'
-      and conrelid = 'public.business_categories'::regclass
-  ) then
-    alter table public.business_categories add constraint business_categories_id_uniq unique (id);
-  end if;
-end $$;
+create unique index if not exists categories_slug_unique
+  on public.categories (slug)
+  where slug is not null;
 
 -- 2) Add FK column on businesses (single "primary" category)
 alter table public.businesses
@@ -81,7 +38,7 @@ begin
     alter table public.businesses
       add constraint businesses_business_category_fk
       foreign key (business_category_id)
-      references public.business_categories (id)
+      references public.categories (id)
       on delete set null;
   end if;
 end $$;
@@ -90,40 +47,34 @@ create index if not exists businesses_business_category_id_idx
   on public.businesses (business_category_id);
 
 -- 3) RLS: categories are safe to be publicly readable
-alter table public.business_categories enable row level security;
+alter table public.categories enable row level security;
 
-drop policy if exists "Public read business categories" on public.business_categories;
-create policy "Public read business categories"
-  on public.business_categories
+drop policy if exists "Public read categories" on public.categories;
+create policy "Public read categories"
+  on public.categories
   for select
   using (true);
 
--- Optional: allow authenticated users to manage categories (adjust as needed)
-drop policy if exists "Authenticated manage business categories" on public.business_categories;
-create policy "Authenticated manage business categories"
-  on public.business_categories
-  for all
-  to authenticated
-  using (true)
-  with check (true);
-
 -- 4) Seed examples (edit to your needs)
-insert into public.business_categories (slug, name, sort_order)
+insert into public.categories (name, slug, sort_order)
 values
-  ('beaute', 'Beauté', 10),
-  ('restauration', 'Restauration', 20),
-  ('btp', 'BTP', 30),
-  ('transport', 'Transport', 40),
-  ('commerce', 'Commerce', 50),
-  ('sante', 'Santé', 60),
-  ('education', 'Éducation', 70),
-  ('tech', 'Tech', 80)
-on conflict (slug) do nothing;
+  ('Beauté', 'beaute', 10),
+  ('Restauration', 'restauration', 20),
+  ('BTP', 'btp', 30),
+  ('Transport', 'transport', 40),
+  ('Commerce', 'commerce', 50),
+  ('Santé', 'sante', 60),
+  ('Éducation', 'education', 70),
+  ('Tech', 'tech', 80)
+on conflict (name) do update
+set
+  slug = excluded.slug,
+  sort_order = excluded.sort_order;
 ```
 
 Notes:
 - The app uses `businesses.business_category_id` to filter and show categories on `/explore`, and in the business settings page.
-- If you later want **multiple** categories per business, we can switch to a mapping table (`business_categories_map`) instead of a single FK column.
+- Your existing `public.business_categories` mapping table can still be used later if you want multiple categories per business.
 
 ## Extracted reference (local)
 

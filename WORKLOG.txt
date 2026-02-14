@@ -277,3 +277,20 @@ Resolution
   - Add `business_categories.id uuid` + backfill values + set default + NOT NULL
   - Ensure `sort_order` + `created_at` exist
   - Add a unique constraint on `(id)` so it can be referenced by the FK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Fix: name conflict (`public.business_categories` is a mapping table)
+
+Problem
+- Running the seed step failed with:
+  - `column "slug" of relation "business_categories" does not exist`
+
+Cause
+- Your existing schema already has `public.business_categories` as a **mapping table**:
+  - columns: `(business_id, category_id)` referencing `public.businesses` and `public.categories`.
+- That table is not a “category list”, so it has no `slug/name/sort_order` columns to insert into.
+
+Resolution
+- Switched the category list to `public.categories` (adds `slug` + `sort_order` there).
+- Kept the “primary category” as `public.businesses.business_category_id -> public.categories(id)`.
+- Updated the app to load category dropdowns from `categories` instead of `business_categories`.
