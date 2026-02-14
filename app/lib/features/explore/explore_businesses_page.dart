@@ -6,7 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ExploreBusinessesPage extends StatefulWidget {
-  const ExploreBusinessesPage({super.key});
+  final String initialCategoryId;
+  const ExploreBusinessesPage({super.key, this.initialCategoryId = ''});
 
   @override
   State<ExploreBusinessesPage> createState() => _ExploreBusinessesPageState();
@@ -103,6 +104,7 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
   void initState() {
     super.initState();
     _scroll.addListener(_onScroll);
+    _category = widget.initialCategoryId;
     unawaited(_reloadAll());
   }
 
@@ -125,8 +127,21 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
 
   Future<void> _initDbCategoriesSupport() async {
     try {
-      final resp =
-          await _sb.from('categories').select('id,name').order('name', ascending: true);
+      dynamic resp;
+      try {
+        resp = await _sb
+            .from('categories')
+            .select('id,slug,name,sort_order')
+            .order('sort_order', ascending: true)
+            .order('name', ascending: true);
+      } on PostgrestException catch (e) {
+        // Older schema may not include slug/sort_order yet.
+        if (e.message.contains('slug') || e.message.contains('sort_order')) {
+          resp = await _sb.from('categories').select('id,name').order('name', ascending: true);
+        } else {
+          rethrow;
+        }
+      }
 
       final rows = (resp as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       final cats = rows.map(_DbCategory.fromRow).where((c) => c.id.isNotEmpty).toList();

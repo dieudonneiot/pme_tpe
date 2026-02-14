@@ -20,11 +20,16 @@ class _LandingPageState extends State<LandingPage> {
   List<Map<String, dynamic>> _businesses = const [];
   String _region = '';
 
+  bool _loadingCategories = true;
+  String? _categoryError;
+  List<_LandingCategory> _categories = const [];
+
   bool get _loggedIn => Supabase.instance.client.auth.currentSession != null;
 
   @override
   void initState() {
     super.initState();
+    _loadCategories();
     _loadBusinesses();
   }
 
@@ -88,6 +93,41 @@ class _LandingPageState extends State<LandingPage> {
       await Supabase.instance.client.auth.signOut();
     } catch (_) {
       // ignore
+    }
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() {
+      _loadingCategories = true;
+      _categoryError = null;
+    });
+
+    try {
+      final sb = Supabase.instance.client;
+      dynamic resp;
+      try {
+        resp = await sb
+            .from('categories')
+            .select('id,name,slug,sort_order')
+            .order('sort_order', ascending: true)
+            .order('name', ascending: true);
+      } on PostgrestException catch (e) {
+        if (e.message.contains('slug') || e.message.contains('sort_order')) {
+          resp = await sb.from('categories').select('id,name').order('name', ascending: true);
+        } else {
+          rethrow;
+        }
+      }
+
+      final rows = (resp as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      _categories = rows.map(_LandingCategory.fromRow).where((c) => c.id.isNotEmpty).toList();
+    } catch (e) {
+      _categoryError = e.toString();
+      _categories = const [];
+    } finally {
+      if (mounted) {
+        setState(() => _loadingCategories = false);
+      }
     }
   }
 
@@ -180,7 +220,15 @@ class _LandingPageState extends State<LandingPage> {
               title: 'Catégories populaires',
               subtitle:
                   "Trouvez rapidement une PME selon son secteur d'activité.",
-              child: const _CategoriesGrid(),
+              child: _CategoriesGrid(
+                loading: _loadingCategories,
+                error: _categoryError,
+                categories: _categories,
+                onOpenCategory: (id) {
+                  final uri = Uri(path: '/explore', queryParameters: {'category': id});
+                  context.go(uri.toString());
+                },
+              ),
             ),
             const SizedBox(height: 16),
             _SectionShell(
@@ -516,90 +564,168 @@ class _SectionShell extends StatelessWidget {
   }
 }
 
+class _LandingCategory {
+  final String id;
+  final String name;
+  final String slug;
+  final int sortOrder;
+
+  const _LandingCategory({
+    required this.id,
+    required this.name,
+    required this.slug,
+    required this.sortOrder,
+  });
+
+  factory _LandingCategory.fromRow(Map<String, dynamic> row) {
+    return _LandingCategory(
+      id: (row['id'] ?? '').toString(),
+      name: (row['name'] ?? '').toString(),
+      slug: (row['slug'] ?? '').toString(),
+      sortOrder: (row['sort_order'] is int) ? row['sort_order'] as int : 0,
+    );
+  }
+}
+
 class _CategoriesGrid extends StatelessWidget {
-  const _CategoriesGrid();
+  final bool loading;
+  final String? error;
+  final List<_LandingCategory> categories;
+  final ValueChanged<String> onOpenCategory;
+
+  const _CategoriesGrid({
+    required this.loading,
+    required this.error,
+    required this.categories,
+    required this.onOpenCategory,
+  });
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final cols = width >= 1000 ? 4 : (width >= 700 ? 3 : 2);
 
-    const cats = <_Cat>[
-      _Cat(Icons.content_cut, 'Beauté', 'Coiffure & soins'),
-      _Cat(Icons.restaurant, 'Restauration', 'Restaurants & traiteurs'),
-      _Cat(Icons.construction, 'BTP', 'Quincaillerie & services'),
-      _Cat(Icons.local_shipping, 'Transport', 'Logistique & livraison'),
-      _Cat(Icons.shopping_bag, 'Commerce', 'Boutiques & marchés'),
-      _Cat(Icons.medical_services, 'Santé', 'Cabinets & pharmacies'),
-      _Cat(Icons.school, 'Éducation', 'Formations & écoles'),
-      _Cat(Icons.devices, 'Tech', 'Informatique & services'),
-    ];
+    if (loading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(14),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    if (error != null) {
+      return Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(error!, style: const TextStyle(color: Colors.red)),
+      );
+    }
+    if (categories.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: Text('Aucune catégorie disponible.'),
+      );
+    }
 
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: cats.length,
+      itemCount: categories.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: cols,
         mainAxisSpacing: 12,
         crossAxisSpacing: 12,
         childAspectRatio: 1.25,
       ),
-      itemBuilder: (context, i) => _CategoryCard(cat: cats[i]),
+      itemBuilder: (context, i) => _CategoryCard(
+        cat: categories[i],
+        onTap: () => onOpenCategory(categories[i].id),
+      ),
     );
   }
 }
 
-class _Cat {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  const _Cat(this.icon, this.title, this.subtitle);
-}
-
 class _CategoryCard extends StatelessWidget {
-  final _Cat cat;
-  const _CategoryCard({required this.cat});
+  final _LandingCategory cat;
+  final VoidCallback onTap;
+  const _CategoryCard({required this.cat, required this.onTap});
+
+  IconData _iconForSlug(String slug, String name) {
+    final s = slug.trim().toLowerCase();
+    final n = name.trim().toLowerCase();
+    final key = s.isEmpty ? n : s;
+    if (key.contains('beau') || key.contains('coiff')) return Icons.content_cut;
+    if (key.contains('rest') || key.contains('cuisin')) return Icons.restaurant;
+    if (key.contains('btp') || key.contains('construct')) return Icons.construction;
+    if (key.contains('trans') || key.contains('livr')) return Icons.local_shipping;
+    if (key.contains('comm') || key.contains('bout')) return Icons.shopping_bag;
+    if (key.contains('sant') || key.contains('pharma')) return Icons.medical_services;
+    if (key.contains('educ') || key.contains('édu') || key.contains('ecol')) return Icons.school;
+    if (key.contains('tech') || key.contains('info')) return Icons.devices;
+    return Icons.category;
+  }
+
+  String _subtitleForSlug(String slug, String name) {
+    final s = slug.trim().toLowerCase();
+    final n = name.trim().toLowerCase();
+    final key = s.isEmpty ? n : s;
+    if (key.contains('beau') || key.contains('coiff')) return 'Coiffure & soins';
+    if (key.contains('rest') || key.contains('cuisin')) return 'Restaurants & traiteurs';
+    if (key.contains('btp') || key.contains('construct')) return 'Quincaillerie & services';
+    if (key.contains('trans') || key.contains('livr')) return 'Logistique & livraison';
+    if (key.contains('comm') || key.contains('bout')) return 'Boutiques & marchés';
+    if (key.contains('sant') || key.contains('pharma')) return 'Cabinets & pharmacies';
+    if (key.contains('educ') || key.contains('édu') || key.contains('ecol')) return 'Formations & écoles';
+    if (key.contains('tech') || key.contains('info')) return 'Informatique & services';
+    return 'Découvrir';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final icon = _iconForSlug(cat.slug, cat.name);
+    final subtitle = _subtitleForSlug(cat.slug, cat.name);
+
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF97316).withAlpha(26),
-                borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF97316).withAlpha(26),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: const Color(0xFFF97316)),
               ),
-              child: Icon(cat.icon, color: const Color(0xFFF97316)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    cat.title,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    cat.subtitle,
-                    style: const TextStyle(color: Colors.black54),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      cat.name,
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(color: Colors.black54),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward, size: 18, color: Colors.black45),
+            ],
+          ),
         ),
       ),
     );

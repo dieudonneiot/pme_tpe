@@ -54,7 +54,12 @@ final appRouter = GoRouter(
   routes: [
     // PUBLIC
     GoRoute(path: '/', builder: (_, _) => const LandingPage()),
-    GoRoute(path: '/explore', builder: (_, _) => const ExploreBusinessesPage()),
+    GoRoute(
+      path: '/explore',
+      builder: (_, state) => ExploreBusinessesPage(
+        initialCategoryId: state.uri.queryParameters['category'] ?? '',
+      ),
+    ),
     GoRoute(
       path: '/b/:slug',
       builder: (_, state) =>

@@ -294,3 +294,19 @@ Resolution
 - Switched the category list to `public.categories` (adds `slug` + `sort_order` there).
 - Kept the “primary category” as `public.businesses.business_category_id -> public.categories(id)`.
 - Updated the app to load category dropdowns from `categories` instead of `business_categories`.
+
+--------------------------------------------------------------------------------
+2026-02-14 - Landing page: DB-driven categories + deep-link to /explore
+
+Goal
+- Make the landing page “Catégories populaires” section use real categories from Supabase.
+- Clicking a category should open `/explore` with that category pre-selected.
+
+Implementation
+- Landing page loads `categories` from Supabase and renders the grid dynamically with loading/error/empty states.
+- `/explore` now accepts a `?category=<uuid>` query param and preselects that category.
+
+Key files
+- `app/lib/features/public/landing_page.dart`
+- `app/lib/core/router.dart`
+- `app/lib/features/explore/explore_businesses_page.dart`
