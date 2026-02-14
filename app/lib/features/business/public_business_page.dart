@@ -315,6 +315,7 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
                     products: _products,
                     mediaBucket: _productMediaBucket,
                     currency: _currency,
+                    onOpenProduct: (id) => context.push('/p/$id'),
                   ),
                   _InfosTab(
                     desc: desc,
@@ -420,10 +421,12 @@ class _ProductsTab extends StatelessWidget {
   final List<Map<String, dynamic>> products;
   final String mediaBucket;
   final String Function(String?) currency;
+  final ValueChanged<String> onOpenProduct;
   const _ProductsTab({
     required this.products,
     required this.mediaBucket,
     required this.currency,
+    required this.onOpenProduct,
   });
 
   String? _mediaUrl(String bucket, String? path) {
@@ -462,7 +465,11 @@ class _ProductsTab extends StatelessWidget {
         return Card(
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: () {},
+            onTap: () {
+              final id = (pr['id'] ?? '').toString();
+              if (id.isEmpty) return;
+              onOpenProduct(id);
+            },
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Column(

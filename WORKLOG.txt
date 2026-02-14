@@ -369,3 +369,19 @@ Cause
 
 Resolution
 - Updated the local script to use `AS $$ ... $$;` and enabled RLS on `public.app_admins`.
+
+--------------------------------------------------------------------------------
+2026-02-14 - Public products: open product detail from public shop
+
+Goal
+- From a public business page (`/b/:slug`), allow users to open a product and see its details/variants/cart actions.
+
+Implementation
+- Added a public route `/p/:id` for `PublicProductPage`.
+- Wired the products grid in `PublicBusinessPage` to navigate to `/p/<productId>` on tap.
+- Enabled `routeObserver` in `GoRouter` so `PublicProductPage` can reliably stop/resume media when it’s covered.
+
+Key files
+- `app/lib/core/router.dart`
+- `app/lib/features/business/public_business_page.dart`
+- `app/lib/features/products/public_product_page.dart`

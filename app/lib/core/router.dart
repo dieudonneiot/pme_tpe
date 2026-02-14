@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'router_refresh.dart';
+import 'route_observer.dart';
 
 import '../features/auth/auth_callback_page.dart';
 import '../features/auth/login_page.dart';
@@ -18,6 +19,7 @@ import '../features/home/home_page.dart';
 import '../features/posts/business_posts_page.dart';
 import '../features/products/business_products_page.dart';
 import '../features/products/product_detail_page.dart';
+import '../features/products/public_product_page.dart';
 import '../features/public/landing_page.dart';
 import '../features/requests/business_requests_page.dart';
 import '../features/requests/request_detail_page.dart';
@@ -28,6 +30,7 @@ final _authRefresh = GoRouterRefreshStream(
 
 final appRouter = GoRouter(
   refreshListenable: _authRefresh,
+  observers: [routeObserver],
   initialLocation: '/',
   redirect: (context, state) {
     final path = state.uri.path;
@@ -42,9 +45,15 @@ final appRouter = GoRouter(
     final isExplore = path == '/explore';
     final isLanding = path == '/';
     final isPublicBusiness = path.startsWith('/b/');
+    final isPublicProduct = path.startsWith('/p/');
 
     if (!loggedIn) {
-      if (isLogin || isCallback || isLanding || isExplore || isPublicBusiness) {
+      if (isLogin ||
+          isCallback ||
+          isLanding ||
+          isExplore ||
+          isPublicBusiness ||
+          isPublicProduct) {
         return null;
       }
       return '/login';
@@ -69,6 +78,11 @@ final appRouter = GoRouter(
       path: '/b/:slug',
       builder: (_, state) =>
           PublicBusinessPage(slug: state.pathParameters['slug']!),
+    ),
+    GoRoute(
+      path: '/p/:id',
+      builder: (_, state) =>
+          PublicProductPage(productId: state.pathParameters['id']!),
     ),
 
     // AUTH
