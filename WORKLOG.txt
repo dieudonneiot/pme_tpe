@@ -582,6 +582,34 @@ Validation
 - `flutter test` OK
 
 --------------------------------------------------------------------------------
+2026-02-14 - Public business page (/b/:slug): pro “Infos” + quick actions
+
+Problem
+- The public business page “Infos” tab was too plain (text-only sections) and didn’t help users take action (contact, maps, social links).
+- Hours could display an unknown day (“?”) depending on whether the DB stored day_of_week as 0..6 or 1..7.
+
+Resolution
+- Added optional category display on the public page:
+  - Loads `businesses.business_category_id` when available, then fetches `business_categories.name` (best-effort).
+- Improved header UX:
+  - Uses `AppBackButton` (desktop-friendly back behavior) with `/explore` fallback.
+  - Added refresh action.
+  - Shows chips for verified/category/address.
+- Rebuilt the “Infos” tab as a modern, actionable layout:
+  - “Open now” summary card + copy-link action.
+  - Contact cards with copy + open actions (Google Maps, WhatsApp, Call).
+  - Hours list highlights today and supports both day-of-week conventions.
+  - Links list shows platform icons + copy/open external links (via `url_launcher`).
+- SnackBars are now floating for a cleaner look.
+
+Files
+- `app/lib/features/business/public_business_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
 2026-02-14 - Business settings page (LinkedIn-style) UX polish
 
 Goal

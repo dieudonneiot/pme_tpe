@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/widgets/app_back_button.dart';
 
 class PublicBusinessPage extends StatefulWidget {
   final String slug;
@@ -21,6 +24,7 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
   String? _error;
 
   Map<String, dynamic>? _biz;
+  Map<String, dynamic>? _category;
   List<Map<String, dynamic>> _links = [];
   List<Map<String, dynamic>> _hours = [];
   List<Map<String, dynamic>> _products = [];
@@ -46,13 +50,32 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
     try {
       final sb = Supabase.instance.client;
 
-      final biz = await sb
-          .from('businesses')
-          .select(
-            'id,name,slug,description,logo_path,cover_path,whatsapp_phone,address_text,is_active,is_verified',
-          )
-          .eq('slug', widget.slug)
-          .maybeSingle();
+      Map<String, dynamic>? biz;
+      var hasCategoryColumn = true;
+      try {
+        final row = await sb
+            .from('businesses')
+            .select(
+              'id,name,slug,description,logo_path,cover_path,whatsapp_phone,address_text,is_active,is_verified,business_category_id',
+            )
+            .eq('slug', widget.slug)
+            .maybeSingle();
+        if (row != null) biz = Map<String, dynamic>.from(row as Map);
+      } on PostgrestException catch (e) {
+        if (e.message.contains('business_category_id')) {
+          hasCategoryColumn = false;
+          final row = await sb
+              .from('businesses')
+              .select(
+                'id,name,slug,description,logo_path,cover_path,whatsapp_phone,address_text,is_active,is_verified',
+              )
+              .eq('slug', widget.slug)
+              .maybeSingle();
+          if (row != null) biz = Map<String, dynamic>.from(row as Map);
+        } else {
+          rethrow;
+        }
+      }
 
       if (biz == null) {
         throw Exception("Boutique introuvable.");
@@ -75,6 +98,23 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
           .select('day_of_week,is_closed,open_time,close_time,timezone')
           .eq('business_id', bizId)
           .order('day_of_week', ascending: true);
+
+      Map<String, dynamic>? category;
+      if (hasCategoryColumn) {
+        final catId = (biz['business_category_id'] ?? '').toString().trim();
+        if (catId.isNotEmpty) {
+          try {
+            final row = await sb
+                .from('business_categories')
+                .select('id,slug,name,sort_order')
+                .eq('id', catId)
+                .maybeSingle();
+            if (row != null) category = Map<String, dynamic>.from(row as Map);
+          } catch (_) {
+            category = null;
+          }
+        }
+      }
 
       dynamic products;
       try {
@@ -106,7 +146,8 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
         }
       }
 
-      _biz = Map<String, dynamic>.from(biz as Map);
+      _biz = biz;
+      _category = category;
       _links = (links as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       _hours = (hours as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       _products = (products as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
@@ -120,9 +161,13 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
   }
 
   String _dowLabel(int dow0to6) {
-    const labels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
-    if (dow0to6 < 0 || dow0to6 > 6) return '?';
-    return labels[dow0to6];
+    // Supports both conventions:
+    // - 0..6 with 0=Sunday (Dim)
+    // - 1..7 with 7=Sunday (Dim)
+    const labels0 = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+    if (dow0to6 >= 0 && dow0to6 <= 6) return labels0[dow0to6];
+    if (dow0to6 >= 1 && dow0to6 <= 7) return labels0[dow0to6 % 7];
+    return '?';
   }
 
   String _formatHours(Map<String, dynamic> row) {
@@ -139,18 +184,37 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
     await Clipboard.setData(ClipboardData(text: text));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(okMsg ?? 'Copié')),
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(okMsg ?? 'Copié'),
+      ),
     );
   }
 
-  Widget _pill(String text) {
+  Widget _pill(String text, {IconData? icon}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: Theme.of(context).colorScheme.surface.withAlpha(220),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
-      child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+          ],
+          Text(
+            text,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -165,16 +229,7 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
     if (_error != null) {
       return Scaffold(
         appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/');
-              }
-            },
-          ),
+          leading: const AppBackButton(fallbackPath: '/explore'),
           title: const Text('Boutique'),
         ),
         body: Center(
@@ -193,6 +248,7 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
     final whatsapp = (biz['whatsapp_phone'] ?? '').toString();
     final address = (biz['address_text'] ?? '').toString();
     final verified = biz['is_verified'] == true;
+    final categoryName = (_category?['name'] ?? '').toString().trim();
 
     final logoUrl = _publicUrl(_logoBucket, biz['logo_path'] as String?);
     final coverUrl = _publicUrl(_coverBucket, biz['cover_path'] as String?);
@@ -205,21 +261,17 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
             SliverAppBar(
               pinned: true,
               expandedHeight: 260,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () {
-                  if (context.canPop()) {
-                    context.pop();
-                  } else {
-                    context.go('/');
-                  }
-                },
-              ),
+              leading: const AppBackButton(fallbackPath: '/explore'),
               actions: [
                 IconButton(
                   tooltip: 'Copier le lien',
                   onPressed: () => _copy('/b/$slug', okMsg: 'Chemin copié: /b/$slug'),
                   icon: const Icon(Icons.link),
+                ),
+                IconButton(
+                  tooltip: 'Actualiser',
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh),
                 ),
               ],
               flexibleSpace: FlexibleSpaceBar(
@@ -298,7 +350,7 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    if (verified) _pill('Vérifié'),
+                                    if (verified) _pill('Vérifié', icon: Icons.verified),
                                   ],
                                 ),
                                 const SizedBox(height: 6),
@@ -309,6 +361,19 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+                                if (categoryName.isNotEmpty || address.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      if (categoryName.isNotEmpty)
+                                        _pill(categoryName, icon: Icons.category_outlined),
+                                      if (address.trim().isNotEmpty)
+                                        _pill(address.trim(), icon: Icons.location_on_outlined),
+                                    ],
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -336,6 +401,9 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
                     onOpenProduct: (id) => context.push('/p/$id'),
                   ),
                   _InfosTab(
+                    businessName: name,
+                    slug: slug,
+                    categoryName: categoryName,
                     desc: desc,
                     address: address,
                     whatsapp: whatsapp,
@@ -574,7 +642,16 @@ class _ProductsTab extends StatelessWidget {
   }
 }
 
+class _OpenNowSummary {
+  final bool open;
+  final String subtitle;
+  const _OpenNowSummary({required this.open, required this.subtitle});
+}
+
 class _InfosTab extends StatelessWidget {
+  final String businessName;
+  final String slug;
+  final String categoryName;
   final String desc;
   final String address;
   final String whatsapp;
@@ -585,6 +662,9 @@ class _InfosTab extends StatelessWidget {
   final Future<void> Function(String, {String? okMsg}) onCopy;
 
   const _InfosTab({
+    required this.businessName,
+    required this.slug,
+    required this.categoryName,
     required this.desc,
     required this.address,
     required this.whatsapp,
@@ -595,69 +675,377 @@ class _InfosTab extends StatelessWidget {
     required this.onCopy,
   });
 
+  Uri? _toUri(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return null;
+    final u = Uri.tryParse(v);
+    if (u == null) return null;
+    if (u.hasScheme) return u;
+    return Uri.tryParse('https://$v');
+  }
+
+  String _digitsOnly(String v) => v.replaceAll(RegExp(r'[^0-9]'), '');
+
+  Future<void> _launch(BuildContext context, Uri uri) async {
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text("Impossible d'ouvrir le lien."),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text("Impossible d'ouvrir le lien."),
+        ),
+      );
+    }
+  }
+
+  int _normalizeDow(int raw) {
+    if (raw >= 0 && raw <= 6) return raw;
+    if (raw >= 1 && raw <= 7) return raw % 7;
+    return -1;
+  }
+
+  int _timeToMinutes(String? time) {
+    if (time == null) return -1;
+    final m = RegExp(r'^(\\d{1,2}):(\\d{2})').firstMatch(time.trim());
+    if (m == null) return -1;
+    final h = int.tryParse(m.group(1) ?? '') ?? -1;
+    final min = int.tryParse(m.group(2) ?? '') ?? -1;
+    if (h < 0 || h > 23 || min < 0 || min > 59) return -1;
+    return (h * 60) + min;
+  }
+
+  _OpenNowSummary _openNowSummary() {
+    if (hours.isEmpty) {
+      return const _OpenNowSummary(open: false, subtitle: 'Horaires non renseignés');
+    }
+
+    final now = DateTime.now();
+    final nowDow = now.weekday % 7; // 0=Sunday, 1=Monday, ..., 6=Saturday
+    final nowMin = (now.hour * 60) + now.minute;
+
+    Map<String, dynamic>? row;
+    for (final h in hours) {
+      final raw = (h['day_of_week'] as int?) ?? -1;
+      if (_normalizeDow(raw) == nowDow) {
+        row = h;
+        break;
+      }
+    }
+
+    if (row == null) return const _OpenNowSummary(open: false, subtitle: 'Horaires non renseignés');
+    if (row['is_closed'] == true) return const _OpenNowSummary(open: false, subtitle: "Fermé aujourd'hui");
+
+    final openMin = _timeToMinutes(row['open_time']?.toString());
+    final closeMin = _timeToMinutes(row['close_time']?.toString());
+    if (openMin < 0 || closeMin < 0) {
+      return const _OpenNowSummary(open: false, subtitle: 'Horaires non renseignés');
+    }
+
+    final openNow = closeMin > openMin
+        ? (nowMin >= openMin && nowMin < closeMin)
+        : (nowMin >= openMin || nowMin < closeMin); // overnight
+
+    final o = (row['open_time'] ?? '').toString();
+    final c = (row['close_time'] ?? '').toString();
+    final o5 = o.length >= 5 ? o.substring(0, 5) : o;
+    final c5 = c.length >= 5 ? c.substring(0, 5) : c;
+
+    return _OpenNowSummary(open: openNow, subtitle: openNow ? 'Ferme à $c5' : 'Ouvre $o5 – $c5');
+  }
+
+  IconData _platformIcon(String platform) {
+    switch (platform.trim().toLowerCase()) {
+      case 'website':
+      case 'site':
+      case 'web':
+        return Icons.public;
+      case 'whatsapp':
+        return Icons.chat_bubble_outline;
+      case 'facebook':
+        return Icons.facebook;
+      case 'instagram':
+        return Icons.camera_alt_outlined;
+      case 'tiktok':
+        return Icons.music_note_outlined;
+      case 'youtube':
+        return Icons.play_circle_outline;
+      case 'x':
+      case 'twitter':
+        return Icons.alternate_email;
+      default:
+        return Icons.link;
+    }
+  }
+
+  String _platformLabel(String platform) {
+    final p = platform.trim();
+    if (p.isEmpty) return 'Lien';
+    return '${p[0].toUpperCase()}${p.substring(1)}';
+  }
+
+  Widget _sectionTitle(BuildContext context, String title, IconData icon) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: scheme.primary.withAlpha(18),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 18, color: scheme.primary),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final openNow = _openNowSummary();
+
+    final hasAnyContact = address.trim().isNotEmpty || whatsapp.trim().isNotEmpty;
+    final phoneDigits = _digitsOnly(whatsapp);
+
+    final waUri = phoneDigits.isEmpty ? null : Uri.parse('https://wa.me/$phoneDigits');
+    final telUri = whatsapp.trim().isEmpty ? null : Uri.tryParse('tel:${whatsapp.trim()}');
+    final mapUri = address.trim().isEmpty
+        ? null
+        : Uri.parse('https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(address.trim())}');
+
+    final usableLinks = links
+        .map((e) => Map<String, dynamic>.from(e))
+        .where((e) => (e['url'] ?? '').toString().trim().isNotEmpty)
+        .toList();
+
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
       children: [
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.all(14),
+            child: Row(
               children: [
-                const Text('À propos', style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                Text(desc.isEmpty ? '—' : desc),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Contact', style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                if (address.isNotEmpty) Text('Adresse: $address'),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Expanded(child: Text(whatsapp.isEmpty ? 'WhatsApp: —' : 'WhatsApp: $whatsapp')),
-                    if (whatsapp.isNotEmpty)
-                      TextButton(
-                        onPressed: () => onCopy(whatsapp, okMsg: 'WhatsApp copié'),
-                        child: const Text('Copier'),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: (openNow.open ? const Color(0xFF10B981) : scheme.error).withAlpha(22),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    Icons.schedule,
+                    color: openNow.open ? const Color(0xFF10B981) : scheme.error,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        openNow.open ? 'Ouvert maintenant' : 'Fermé',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
                       ),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(openNow.subtitle, style: TextStyle(color: scheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                IconButton.filledTonal(
+                  tooltip: 'Copier le lien',
+                  onPressed: () => onCopy('/b/$slug', okMsg: 'Chemin copié: /b/$slug'),
+                  icon: const Icon(Icons.link),
                 ),
               ],
             ),
           ),
         ),
+
+        const SizedBox(height: 12),
+        _sectionTitle(context, 'À propos', Icons.info_outline),
         const SizedBox(height: 10),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Horaires', style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
+                if (categoryName.trim().isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withAlpha(16),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.category_outlined, size: 16, color: scheme.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          categoryName,
+                          style: TextStyle(fontWeight: FontWeight.w800, color: scheme.onSurface),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                Text(
+                  desc.trim().isEmpty ? 'Aucune description pour le moment.' : desc.trim(),
+                  style: const TextStyle(height: 1.25),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        _sectionTitle(context, 'Contact', Icons.contact_phone_outlined),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                if (!hasAnyContact)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Contact non renseigné.', style: TextStyle(color: scheme.onSurfaceVariant)),
+                  ),
+                if (address.trim().isNotEmpty) ...[
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.location_on_outlined),
+                    title: const Text('Adresse', style: TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(address.trim()),
+                    trailing: Wrap(
+                      spacing: 6,
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'Copier',
+                          onPressed: () => onCopy(address.trim(), okMsg: 'Adresse copiée'),
+                          icon: const Icon(Icons.copy),
+                        ),
+                        if (mapUri != null)
+                          IconButton.filledTonal(
+                            tooltip: 'Ouvrir Maps',
+                            onPressed: () => _launch(context, mapUri),
+                            icon: const Icon(Icons.map_outlined),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (whatsapp.trim().isNotEmpty) const Divider(height: 22),
+                ],
+                if (whatsapp.trim().isNotEmpty) ...[
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.chat_bubble_outline),
+                    title: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(whatsapp.trim()),
+                    trailing: Wrap(
+                      spacing: 6,
+                      children: [
+                        IconButton.filledTonal(
+                          tooltip: 'Copier',
+                          onPressed: () => onCopy(whatsapp.trim(), okMsg: 'WhatsApp copié'),
+                          icon: const Icon(Icons.copy),
+                        ),
+                        if (waUri != null)
+                          IconButton.filledTonal(
+                            tooltip: 'Ouvrir WhatsApp',
+                            onPressed: () => _launch(context, waUri),
+                            icon: const Icon(Icons.send_outlined),
+                          ),
+                        if (telUri != null)
+                          IconButton.filledTonal(
+                            tooltip: 'Appeler',
+                            onPressed: () => _launch(context, telUri),
+                            icon: const Icon(Icons.phone_outlined),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+        _sectionTitle(context, 'Horaires', Icons.access_time),
+        const SizedBox(height: 10),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 if (hours.isEmpty)
-                  const Text('—')
+                  Text('Horaires non renseignés.', style: TextStyle(color: scheme.onSurfaceVariant))
                 else
                   ...hours.map((h) {
-                    final day = (h['day_of_week'] as int?) ?? -1;
+                    final raw = (h['day_of_week'] as int?) ?? -1;
+                    final label = dowLabel(raw);
+                    final normalized = _normalizeDow(raw);
+                    final nowDow = DateTime.now().weekday % 7;
+                    final isToday = normalized >= 0 && normalized == nowDow;
+
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(
                         children: [
-                          SizedBox(width: 46, child: Text(dowLabel(day))),
-                          Expanded(child: Text(formatHours(h))),
+                          SizedBox(
+                            width: 48,
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontWeight: isToday ? FontWeight.w900 : FontWeight.w700,
+                                color: isToday ? scheme.primary : scheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              formatHours(h),
+                              style: TextStyle(
+                                fontWeight: isToday ? FontWeight.w900 : FontWeight.w600,
+                                color: isToday ? scheme.primary : scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          if (isToday)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: scheme.primary.withAlpha(14),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(color: scheme.outlineVariant),
+                              ),
+                              child: Text(
+                                "Aujourd'hui",
+                                style: TextStyle(fontWeight: FontWeight.w800, color: scheme.primary),
+                              ),
+                            ),
                         ],
                       ),
                     );
@@ -666,34 +1054,50 @@ class _InfosTab extends StatelessWidget {
             ),
           ),
         ),
+
+        const SizedBox(height: 16),
+        _sectionTitle(context, 'Liens', Icons.link),
         const SizedBox(height: 10),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Liens', style: TextStyle(fontWeight: FontWeight.w800)),
-                const SizedBox(height: 8),
-                if (links.isEmpty)
-                  const Text('—')
+                if (usableLinks.isEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Aucun lien.', style: TextStyle(color: scheme.onSurfaceVariant)),
+                  )
                 else
-                  ...links.map((l) {
+                  ...usableLinks.map((l) {
                     final platform = (l['platform'] ?? '').toString();
-                    final url = (l['url'] ?? '').toString();
-                    final label = (l['label'] ?? '').toString();
-                    final line = label.isNotEmpty ? '$platform: $label' : '$platform: $url';
+                    final url = (l['url'] ?? '').toString().trim();
+                    final label = (l['label'] ?? '').toString().trim();
+
+                    final uri = _toUri(url);
+                    final title = label.isNotEmpty ? label : _platformLabel(platform);
 
                     return ListTile(
-                      dense: true,
                       contentPadding: EdgeInsets.zero,
-                      title: Text(line, maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: url.isEmpty
-                          ? null
-                          : TextButton(
-                              onPressed: () => onCopy(url, okMsg: 'Lien copié'),
-                              child: const Text('Copier'),
+                      leading: Icon(_platformIcon(platform), color: scheme.primary),
+                      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(url, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: Wrap(
+                        spacing: 6,
+                        children: [
+                          IconButton.filledTonal(
+                            tooltip: 'Copier',
+                            onPressed: () => onCopy(url, okMsg: 'Lien copié'),
+                            icon: const Icon(Icons.copy),
+                          ),
+                          if (uri != null)
+                            IconButton.filledTonal(
+                              tooltip: 'Ouvrir',
+                              onPressed: () => _launch(context, uri),
+                              icon: const Icon(Icons.open_in_new),
                             ),
+                        ],
+                      ),
                     );
                   }),
               ],
