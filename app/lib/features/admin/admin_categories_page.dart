@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/widgets/app_back_button.dart';
+
 class AdminCategoriesPage extends StatefulWidget {
   const AdminCategoriesPage({super.key});
 
@@ -170,6 +172,7 @@ class _AdminCategoriesPageState extends State<AdminCategoriesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: const Text('Admin · Catégories'),
         actions: [
           IconButton(

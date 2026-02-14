@@ -15,8 +15,6 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
   static const _logoBucket = 'business_logos';
   static const _coverBucket = 'business_covers';
 
-  // Ajuste si besoin
-  static const _postMediaBucket = 'post_media';
   static const _productMediaBucket = 'product_media';
 
   bool _loading = true;
@@ -25,7 +23,6 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
   Map<String, dynamic>? _biz;
   List<Map<String, dynamic>> _links = [];
   List<Map<String, dynamic>> _hours = [];
-  List<Map<String, dynamic>> _posts = [];
   List<Map<String, dynamic>> _products = [];
 
   String? _publicUrl(String bucket, String? path) {
@@ -79,26 +76,39 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
           .eq('business_id', bizId)
           .order('day_of_week', ascending: true);
 
-      final posts = await sb
-          .from('posts')
-          .select('id,title,content,created_at,is_published,post_media(id,media_type,storage_path)')
-          .eq('business_id', bizId)
-          .eq('is_published', true)
-          .order('created_at', ascending: false)
-          .limit(30);
-
-      final products = await sb
-          .from('products')
-          .select('id,title,description,price_amount,currency,created_at,is_active,product_media(id,media_type,storage_path)')
-          .eq('business_id', bizId)
-          .eq('is_active', true)
-          .order('created_at', ascending: false)
-          .limit(30);
+      dynamic products;
+      try {
+        products = await sb
+            .from('products')
+            .select(
+              'id,title,description,price_amount,currency,created_at,is_active,primary_media_id,'
+              'product_media!product_media_product_id_fkey(id,media_type,storage_path,sort_order,created_at)',
+            )
+            .eq('business_id', bizId)
+            .eq('is_active', true)
+            .order('created_at', ascending: false)
+            .order('sort_order', referencedTable: 'product_media', ascending: true)
+            .order('created_at', referencedTable: 'product_media', ascending: true)
+            .limit(30);
+      } on PostgrestException catch (e) {
+        final m = e.message.toLowerCase();
+        if (m.contains('primary_media_id') || m.contains('sort_order')) {
+          // Backward-compatible: migration not applied yet.
+          products = await sb
+              .from('products')
+              .select('id,title,description,price_amount,currency,created_at,is_active,product_media!product_media_product_id_fkey(id,media_type,storage_path)')
+              .eq('business_id', bizId)
+              .eq('is_active', true)
+              .order('created_at', ascending: false)
+              .limit(30);
+        } else {
+          rethrow;
+        }
+      }
 
       _biz = Map<String, dynamic>.from(biz as Map);
       _links = (links as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       _hours = (hours as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      _posts = (posts as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       _products = (products as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
     } catch (e) {
       _error = e.toString();
@@ -188,7 +198,7 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
     final coverUrl = _publicUrl(_coverBucket, biz['cover_path'] as String?);
 
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
         body: CustomScrollView(
           slivers: [
@@ -215,9 +225,15 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
               flexibleSpace: FlexibleSpaceBar(
                 background: Stack(
                   fit: StackFit.expand,
-                  children: [
-                    if (coverUrl != null)
-                      Image.network(coverUrl, fit: BoxFit.cover)
+                    children: [
+                      if (coverUrl != null)
+                      Image.network(
+                        coverUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Container(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        ),
+                      )
                     else
                       Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
                     Container(
@@ -251,7 +267,14 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
                             child: ClipOval(
                               child: logoUrl == null
                                   ? const Icon(Icons.store, size: 40)
-                                  : Image.network(logoUrl, fit: BoxFit.cover),
+                                  : Image.network(
+                                      logoUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => Container(
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        child: const Center(child: Icon(Icons.store)),
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(width: 12),
@@ -297,7 +320,6 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
               ),
               bottom: const TabBar(
                 tabs: [
-                  Tab(text: 'Posts'),
                   Tab(text: 'Produits'),
                   Tab(text: 'Infos'),
                 ],
@@ -307,10 +329,6 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
             SliverFillRemaining(
               child: TabBarView(
                 children: [
-                  _PostsTab(
-                    posts: _posts,
-                    mediaBucket: _postMediaBucket,
-                  ),
                   _ProductsTab(
                     products: _products,
                     mediaBucket: _productMediaBucket,
@@ -337,6 +355,7 @@ class _PublicBusinessPageState extends State<PublicBusinessPage> {
   }
 }
 
+/* Posts tab removed (unused) — keep code commented for future reuse.
 class _PostsTab extends StatelessWidget {
   final List<Map<String, dynamic>> posts;
   final String mediaBucket;
@@ -417,6 +436,8 @@ class _PostsTab extends StatelessWidget {
   }
 }
 
+*/
+
 class _ProductsTab extends StatelessWidget {
   final List<Map<String, dynamic>> products;
   final String mediaBucket;
@@ -442,8 +463,8 @@ class _ProductsTab extends StatelessWidget {
 
     return GridView.builder(
       padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 240,
         childAspectRatio: 0.92,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
@@ -458,11 +479,43 @@ class _ProductsTab extends StatelessWidget {
         final media = (pr['product_media'] as List?)?.cast<Map>() ?? [];
         String? thumb;
         if (media.isNotEmpty) {
-          final first = Map<String, dynamic>.from(media.first);
-          thumb = _mediaUrl(mediaBucket, first['storage_path']?.toString());
+          final primaryId = pr['primary_media_id']?.toString();
+          Map<String, dynamic>? chosenImage;
+
+          if (primaryId != null && primaryId.isNotEmpty) {
+            for (final item in media) {
+              final m = Map<String, dynamic>.from(item);
+              final t = (m['media_type'] ?? '').toString().toLowerCase();
+              if (m['id']?.toString() == primaryId && t == 'image') {
+                chosenImage = m;
+                break;
+              }
+            }
+          }
+
+          chosenImage ??= () {
+            for (final item in media) {
+              final m = Map<String, dynamic>.from(item);
+              final t = (m['media_type'] ?? '').toString().toLowerCase();
+              if (t == 'image') return m;
+            }
+            return null;
+          }();
+
+          if (chosenImage != null) {
+            thumb = _mediaUrl(mediaBucket, chosenImage['storage_path']?.toString());
+          }
+        }
+
+        String priceText = '—';
+        if (price is num) {
+          final n = price;
+          final s = (n % 1 == 0) ? n.toInt().toString() : n.toStringAsFixed(2);
+          priceText = '$s $cur';
         }
 
         return Card(
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: () {
@@ -475,33 +528,41 @@ class _ProductsTab extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
+                  AspectRatio(
+                    aspectRatio: 4 / 3,
                     child: Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       ),
+                      clipBehavior: Clip.antiAlias,
                       child: thumb == null
-                          ? const Icon(Icons.inventory_2_outlined)
-                          : ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: Image.network(thumb, fit: BoxFit.cover),
+                          ? const Center(child: Icon(Icons.inventory_2_outlined, size: 28))
+                          : Image.network(
+                              thumb,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.broken_image_outlined),
+                              ),
                             ),
                     ),
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    title,
+                    title.isEmpty ? 'Produit' : title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    price == null ? 'Prix: —' : 'Prix: $price $cur',
+                    priceText,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ],
               ),

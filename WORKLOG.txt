@@ -385,3 +385,614 @@ Key files
 - `app/lib/core/router.dart`
 - `app/lib/features/business/public_business_page.dart`
 - `app/lib/features/products/public_product_page.dart`
+
+--------------------------------------------------------------------------------
+2026-02-14 - B2 Products: media management (photos/videos/PDF) + smoother list UX
+
+Goal
+- Make product management feel modern: add a real media gallery in the product back-office.
+- Improve the products list for faster navigation (search + thumbnails + filter).
+
+Problems
+- Back-office `ProductDetailPage` had no way to upload/manage `product_media`, even though public pages already
+  displayed product media via Supabase Storage.
+- Product list was a plain list with no search, thumbnails, or empty-state CTA.
+
+Implementation (App)
+- Added a “Médias” section in product back-office:
+  - Upload via FilePicker (png/jpg/webp/mp4/webm/mov/pdf).
+  - Upload to Storage bucket `product_media` using the RLS-required path:
+    `<business_uuid>/products/<product_uuid>/...`
+  - Insert/delete rows in `public.product_media (product_id, media_type, storage_path)`.
+  - Gallery grid with open/preview and delete (with confirmation + progress).
+  - Safety: max upload size set to 20MB to avoid desktop memory issues.
+- Improved business products list:
+  - Server-side search (debounced) on title.
+  - Status filter (All/Actifs/Inactifs).
+  - Thumbnail (prefers first image in `product_media`).
+  - Better empty state with “Créer un produit” CTA.
+- Fixed broken template test so `flutter test` passes without requiring runtime env (Supabase/Firebase):
+  - `app/test/widget_test.dart`
+
+Implementation (Supabase docs/scripts)
+- Documented the product media requirements (table + bucket + storage path rule) in:
+  - `app/_supabase_sql/README.md`
+- Added an optional “fix policies” script (ignored by Git) if uploads/deletes are blocked by RLS:
+  - `app/_supabase_sql/product_media_policies.sql`
+
+Key files
+- `app/lib/features/products/product_detail_page.dart`
+- `app/lib/features/products/business_products_page.dart`
+- `app/_supabase_sql/README.md`
+
+--------------------------------------------------------------------------------
+2026-02-14 - B2 Products: cover image + media ordering
+
+Goal
+- Let business users choose a product “cover” image for consistent thumbnails.
+- Allow ordering of media in the gallery (so public pages can show a predictable hero image).
+
+Why it was needed
+- Without a cover/ordering system, thumbnails depended on “first row returned”, which is unstable and feels unprofessional.
+
+Implementation
+- DB (manual migration in Supabase):
+  - Added local script (ignored by Git): `app/_supabase_sql/product_media_cover_ordering.sql`
+    - `product_media.sort_order int not null default 0`
+    - `products.primary_media_id uuid null` (FK → `product_media.id`, on delete set null)
+    - RLS UPDATE policy on `product_media` for business members (reordering).
+- App:
+  - Product back-office: actions menu on each media item:
+    - “Définir couverture”
+    - “Déplacer avant / après” (swap sort_order)
+  - Product list + public pages now prefer the cover media when present:
+    - `app/lib/features/products/business_products_page.dart`
+    - `app/lib/features/business/public_business_page.dart`
+    - `app/lib/features/products/public_product_page.dart`
+  - Backward-compatible loading: if the migration hasn’t been applied yet, pages fall back to the old columns.
+
+Notes (Supabase SQL)
+- If you see `ERROR: 42501: must be owner of table objects` while running media policy SQL, it’s because the script
+  tried to modify `storage.objects` (owned/managed by Supabase) with an unprivileged role.
+- Use `app/_supabase_sql/product_media_policies.sql` for `public.product_media` policies, and configure Storage
+  policies via Dashboard (Storage → Policies) or run the storage script as a privileged project role:
+  `app/_supabase_sql/storage_product_media_policies.sql`
+- Created the optional Storage policy helper script:
+  - `app/_supabase_sql/storage_product_media_policies.sql`
+  It may fail in SQL Editor depending on your project privileges; the Dashboard is the most reliable way.
+
+--------------------------------------------------------------------------------
+2026-02-14 - B2 Products: variants CRUD + stock history (pro management UX)
+
+Goal
+- Make variants management smooth like a real business app:
+  - Edit variant (title/SKU/price/active)
+  - Activate/deactivate
+  - View stock movement history (audit trail)
+  - Delete variant (when possible)
+
+Implementation
+- Added variant management actions in:
+  - `app/lib/features/products/product_detail_page.dart`
+    - Edit dialog (updates `public.product_variants`)
+    - Quick activate/deactivate
+    - Stock history bottom sheet (reads last 50 rows from `public.inventory_movements`)
+    - Delete with helpful error message if blocked by FK/history
+- Updated the variants list UI to show:
+  - Stock indicator, active status, SKU, price (variant price or fallback to product price)
+  - Quick actions: stock adjust, history, menu (edit/toggle/delete)
+
+--------------------------------------------------------------------------------
+2026-02-14 - B2 Inventory dashboard + low-stock threshold
+
+Goal
+- Give business users a real “Inventory” screen across all products:
+  - Search by product/variant/SKU
+  - Quick stock adjustments
+  - Optional low-stock filter (per variant threshold)
+
+Implementation
+- Added a new inventory page + route:
+  - `app/lib/features/products/business_inventory_page.dart`
+  - Route: `/business/:id/inventory`
+  - Home tile: `Dashboard` → “Stock (B2)”
+- Low stock threshold (optional DB migration):
+  - Added `app/_supabase_sql/variant_low_stock_threshold.sql` (adds `product_variants.low_stock_threshold`)
+  - UI automatically detects if the column exists (backward-compatible). When enabled:
+    - Variant edit dialog includes “Seuil stock bas”
+    - Inventory page supports “Low” filter and highlights low stock rows
+
+--------------------------------------------------------------------------------
+2026-02-14 - B2 Bulk tools: CSV import/export + duplicate product
+
+Goal
+- Speed up catalogue management for business teams (including staff):
+  - Export catalogue to CSV (for Excel edits / backups)
+  - Import catalogue from CSV (create products + variants)
+  - Duplicate a product (with variants, categories, and media pointers)
+
+Implementation
+- Added CSV dependency and implemented tools in:
+  - `app/lib/features/products/business_products_page.dart`
+    - Tools menu: “Modèle CSV”, “Exporter CSV”, “Importer CSV”
+    - Export includes products + variants (and `low_stock_threshold` when available)
+    - Import creates products as INACTIFS by default (safe) and imports variants
+    - Delimiter auto-detect on import (`;` vs `,`)
+    - Duplicate product flow with options:
+      - copy variants (SKU cleared to avoid collisions)
+      - copy product categories map
+      - copy media pointers (reuses same Storage paths; does NOT duplicate files)
+ - Safety fix for duplicated media:
+  - `app/lib/features/products/product_detail_page.dart` now deletes the Storage object only if its `storage_path`
+    is no longer referenced by any other `product_media` row.
+
+--------------------------------------------------------------------------------
+2026-02-14 - B3 Orders: admin grant + stock reservation (accepted)
+
+Goal
+- Let a business receive orders either:
+  - via paid subscription (`entitlements.can_receive_orders = true`), OR
+  - via an admin manual grant (time-limited)
+- When a request/order is confirmed (`status -> accepted`), automatically reserve/decrement stock (variants).
+
+Why there were issues
+- Admin needed a safe way to enable/disable order reception per business (without editing DB manually).
+- Stock changes must be done server-side (atomic + secure), not by client updates, otherwise concurrent orders can oversell.
+- Navigation bug: the app was pushing `/cart` and `/checkout` but the router had no routes for them, causing runtime navigation errors.
+- Login flow: `?next=` existed in some places, but the router didn’t redirect back to it after login.
+
+DB / Supabase (manual SQL)
+- Admin entitlements management:
+  - Script: `app/_supabase_sql/admin_manage_entitlements.sql`
+  - Adds: `entitlements.orders_grant_until timestamptz`
+  - Adds RLS policies so only app admins can manage entitlements and list businesses in the admin UI.
+- Stock reservation on acceptance:
+  - Script: `app/_supabase_sql/b3_stock_reservation.sql`
+  - Adds: `service_request_items.variant_id` (FK -> `product_variants.id`)
+  - Adds: `service_requests.stock_reserved_at / stock_released_at`
+  - Updates RLS insert policy for `service_requests` so customers can only create orders if:
+    `can_receive_orders = true OR orders_grant_until > now()` and the business is active.
+  - Adds RPC (server-side, atomic):
+    - `set_request_status(request_id, next_status)`
+    - Automatically calls `reserve_stock_for_request()` when accepting and `release_stock_for_request()` on cancel/reject.
+
+App changes (Flutter)
+- Admin UI: manage order entitlements per business
+  - `app/lib/features/admin/admin_entitlements_page.dart`
+  - Route: `/admin/entitlements`
+  - Dashboard tile visible only for app admins (`rpc('is_app_admin')`)
+  - Toggles subscription flag and sets/removes the manual grant date.
+- Checkout now persists variant references (for stock)
+  - `app/lib/features/cart/checkout_page.dart`
+  - Inserts `service_request_items.variant_id` when present.
+  - Backward-compatible fallback if the column isn’t deployed yet (retry without `variant_id`).
+  - Better UX message when insert is blocked by entitlements/RLS.
+- Business requests module (B3)
+  - `app/lib/features/requests/business_requests_page.dart` (list)
+  - `app/lib/features/requests/request_detail_page.dart` (detail + status changes)
+  - Status change uses `rpc('set_request_status')` when available; fallback to legacy update+history if RPC isn’t deployed yet.
+- Fixed routing + login “next” support
+  - `app/lib/core/router.dart`
+  - Added missing routes: `/cart`, `/checkout`
+  - Public `/cart` allowed without login
+  - When redirecting to `/login`, router adds `?next=<original_url>` and post-login redirects back (only for internal paths starting with `/`).
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Business settings page (LinkedIn-style) UX polish
+
+Goal
+- Make the business settings page look modern/pro like LinkedIn (cover + logo header, clean sections, consistent actions).
+
+Changes (Flutter)
+- Replaced the “2 cards for logo/cover” layout with a single header card:
+  - Cover banner (with edit icon button)
+  - Circular logo avatar overlapping the cover (with edit icon button)
+  - Name + @slug and a category chip
+  - “Aperçu public” shortcut
+- Grouped form fields into a clean card with icons (category/WhatsApp/address/description).
+- Converted “Avancé” actions to tonal filled buttons inside a card.
+- Made the save action sticky with a bottom “Enregistrer” bar (desktop + mobile friendly).
+- Restyled the danger zone as an error-tinted card with a clear destructive CTA.
+
+Files
+- `app/lib/features/business/business_settings_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Beautiful “Liens & réseaux” page (business links)
+
+Problem
+- The links page was functional but looked plain (a long list of text fields with no structure or quick actions).
+
+Resolution
+- Rebuilt the UI with a modern card layout + header, split into “Contact” and “Réseaux sociaux”.
+- Added platform icons, better hints, and quick actions (copy/open/clear).
+- Added auto-formatting on save (handles like `@name`, phone numbers for WhatsApp, missing `https://`, etc.).
+- Added a desktop-friendly back button and a sticky bottom “Enregistrer” bar.
+
+Files
+- `app/lib/features/business/business_links_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Dashboard (Home) UX polish
+
+Problem
+- The dashboard was usable but looked flat and “empty” (plain header, big blank tiles, and an unnecessary Posts tile).
+
+Resolution
+- Modernized the dashboard header with a gradient, business avatar, improved dropdown, and status pills (plan/role/orders/ads/monetisation).
+- Improved tiles with icons + tags (B1/B2/B3/Admin) and better visual hierarchy.
+- Removed the “Posts” shortcut from the dashboard (keeps the UI focused on what’s used).
+
+Files
+- `app/lib/features/home/home_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Make pills/buttons clickable (dashboard + business settings)
+
+Improvements
+- Business settings header:
+  - Profile photo (logo) area is now clickable (same as the pencil) to change the logo.
+  - Cover banner is clickable to change the cover (in addition to the camera button).
+  - File: `app/lib/features/business/business_settings_page.dart`
+- Dashboard header pills:
+  - “Abonnement requis” (and other status pills) are now clickable and route to the right place:
+    - Plan/Monétisation/Ads → Monetisation screen (`/business/:id/settings/billing`)
+    - Commandes → Requests if enabled, else Monetisation
+    - Rôle → Members management (`/business/:id/members`)
+  - Added route for members management: `/business/:id/members`
+  - Files: `app/lib/features/home/home_page.dart`, `app/lib/core/router.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Products (B2): beautiful page + pro product creation + variant media
+
+Problem
+- The Products (B2) page looked empty/flat and the “create product” flow was too basic (title + price only).
+- Needed a pro flow: up to 3 photos (optional), 1 small video (optional), and variants; plus a nicer listing UX.
+
+Resolution (Flutter)
+- Products page UI:
+  - Added a modern header card (search + filter chips + counts).
+  - Switched the list to a responsive grid of product cards (thumbnail, status, variants count, quick actions).
+  - File: `app/lib/features/products/business_products_page.dart`
+- Product creation UX:
+  - Replaced the tiny dialog with a full bottom-sheet form:
+    - Title/price/description
+    - Media picker: max 3 photos + optional video (previews + remove)
+    - Optional draft variants (name/SKU/price)
+  - After create, redirects to the product detail page for advanced configuration.
+  - File: `app/lib/features/products/business_products_page.dart`
+- Variant media (pro):
+  - Variants can now reference a product media item (photo/video) via `product_variants.options.cover_media_id` (no DB migration).
+  - Variant list shows a thumbnail + stock badge.
+  - Product media rules enforced: max 3 images + max 1 video per product.
+  - File: `app/lib/features/products/product_detail_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Back arrows everywhere (desktop-friendly navigation)
+
+Problem
+- On desktop there is no system back button, and some root/deep-linked pages had no back arrow.
+
+Resolution
+- Added a shared back button widget that:
+  - pops when possible
+  - otherwise redirects to a safe fallback (`/home` if logged-in, else `/`)
+  - File: `app/lib/core/widgets/app_back_button.dart`
+- Used it on key pages (Dashboard, Explore, Cart/Checkout, Products, Stock, Admin, etc.).
+
+Files
+- `app/lib/core/widgets/app_back_button.dart`
+- `app/lib/features/home/home_page.dart`
+- `app/lib/features/explore/explore_page.dart`
+- `app/lib/features/cart/cart_page.dart`
+- `app/lib/features/cart/checkout_page.dart`
+- `app/lib/features/notifications/notifications_page.dart`
+- `app/lib/features/products/business_products_page.dart`
+- `app/lib/features/products/product_detail_page.dart`
+- `app/lib/features/products/business_inventory_page.dart`
+- `app/lib/features/admin/admin_categories_page.dart`
+- `app/lib/features/admin/admin_entitlements_page.dart`
+- `app/lib/features/billing/plans_page.dart`
+- `app/lib/features/business/business_ads_page.dart`
+- `app/lib/features/business/business_social_links_page.dart`
+- `app/lib/features/orders/order_product_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Business delete (archive) button in settings
+
+Problem
+- Needed a safe way for a business owner/admin to “delete” their business from the app UI.
+- Hard-deleting is risky because many tables can reference `businesses` (products, orders/requests, etc.).
+
+Solution (DB)
+- Added an archive/soft-delete RPC:
+  - `app/_supabase_sql/delete_business.sql`
+  - Adds `businesses.deleted_at` (if missing)
+  - Creates `public.delete_business(_business_id uuid)` (SECURITY DEFINER)
+  - Authorization: only **business owner/admin** or **app admin**
+  - Effect: sets `businesses.is_active=false`, `deleted_at=now()`, changes `slug` to free it, and removes `business_members` rows for that business.
+
+Solution (App)
+- Added a “Zone dangereuse” section with a red delete button + typed confirmation (slug or “SUPPRIMER”):
+  - `app/lib/features/business/business_settings_page.dart`
+- On success, redirects to `/home` and shows a confirmation snackbar.
+
+Validation
+- `flutter analyze` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - UX polish: order statuses timeline + payment retry page
+
+Problem
+- Customer order tracking worked but the status UX was too raw (plain strings, no clear progress).
+- Customers had no dedicated “payment status / retry” screen after checkout.
+- Business-side requests list/detail didn’t visually highlight the current state well, and empty states were basic.
+
+Resolution
+- Implemented shared, modern status UI components (chip + progress bar + timeline) and reused them across customer + business flows.
+- Added a customer payment status page with PayDunya retry support (creates a new payment intent via Edge Function and opens the payment link).
+- Improved empty/error states on key lists so users always have a clear next action (refresh/retry).
+
+Key techniques / code changes
+- Shared status widgets:
+  - `app/lib/features/requests/request_status_ui.dart` (`RequestStatusChip`, `RequestProgressBar`, `RequestTimeline`)
+- Customer UX:
+  - `app/lib/features/requests/customer_order_detail_page.dart` adds progress + timeline + Payment button linking to `/requests/:rid/payment`
+  - `app/lib/features/requests/customer_orders_page.dart` uses status chips in the list
+  - `app/lib/features/requests/customer_payment_status_page.dart` shows latest `payment_intents` + retry via `create_payment_intent`
+- Business UX:
+  - `app/lib/features/requests/business_requests_page.dart` uses status chips + better empty state
+  - `app/lib/features/requests/request_detail_page.dart` uses progress bar + timeline (instead of a raw history list)
+- Routing:
+  - `app/lib/core/router.dart` adds `/requests/:rid/payment`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Fix product_media embed error + add desktop back buttons
+
+Problem
+- Supabase (PostgREST) threw `PGRST201` when selecting `products` with embedded `product_media(...)` because there are 2 FK relationships:
+  - `product_media.product_id -> products.id` (one-to-many)
+  - `products.primary_media_id -> product_media.id` (many-to-one)
+  PostgREST requires specifying which relationship to use when embedding.
+- On desktop, some “deep link” pages (ex: `/requests/:id`) can be opened without a navigation stack, so Flutter didn’t show a back arrow automatically.
+
+Resolution
+- Disambiguated embeds by explicitly using the one-to-many FK in select strings: `product_media!product_media_product_id_fkey(...)`.
+- Added an explicit back arrow on key pages; if there is no stack, it falls back to a sensible route (`/home`, `/my/orders`, `/business/:id/requests`, `/requests/:id`, or `/explore`).
+
+Key techniques / code changes
+- Fix PostgREST embed ambiguity:
+  - `app/lib/features/products/public_product_page.dart`
+  - `app/lib/features/products/business_products_page.dart`
+  - `app/lib/features/business/public_business_page.dart`
+- Desktop back buttons:
+  - `app/lib/features/requests/customer_orders_page.dart`
+  - `app/lib/features/requests/customer_order_detail_page.dart`
+  - `app/lib/features/requests/customer_payment_status_page.dart`
+  - `app/lib/features/requests/request_detail_page.dart`
+  - `app/lib/features/requests/request_hub_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Auth UX + back navigation + pro product cards
+
+Problem
+- Login screen had no back button (desktop users could feel “stuck”).
+- Android/iOS back navigation was blocked in `ExplorePage` due to `PopScope(canPop: false)`.
+- Logging out from the dashboard (`/home`) could send users to `/login` (even though the app has public pages like `/` and `/explore`).
+- Public business product cards were visually too “large” (image taking most of the card) on business pages.
+
+Resolution
+- Added an explicit back arrow on the login page and key public pages.
+- Re-enabled effective phone back navigation in `ExplorePage` (now goes back/home when there’s no stack).
+- Adjusted router redirect so logged-out access to `/home` returns to the public landing page (`/`) instead of forcing login.
+- Improved the public business “Produits” tab grid to be more modern and compact (smaller image area, responsive columns).
+
+Key techniques / code changes
+- Auth/back UX:
+  - `app/lib/features/auth/login_page.dart` adds an `AppBar` with back arrow
+  - `app/lib/core/router.dart` redirects logged-out `/home` → `/`
+  - `app/lib/features/home/home_page.dart` sign-out now sends to `/`
+  - `app/lib/features/public/landing_page.dart` adds an “Admin” shortcut (routes to `/admin/categories`, triggers login redirect if needed)
+- Back navigation on mobile:
+  - `app/lib/features/explore/explore_page.dart` fixes `PopScope` to allow pop when possible, otherwise `go('/')`
+  - `app/lib/features/explore/explore_businesses_page.dart` adds back arrow fallback to `/`
+- Business page polish:
+  - `app/lib/features/business/public_business_page.dart` product cards now use `AspectRatio(4/3)` thumbnails + `SliverGridDelegateWithMaxCrossAxisExtent`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+Addendum (same day)
+- `app/lib/features/public/landing_page.dart` actions are now responsive (compact mode uses an account menu) to avoid AppBar overflow on phones.
+
+--------------------------------------------------------------------------------
+2026-02-14 - Fix “UnimplementedError init()” on product video (Windows)
+
+Problem
+- On Windows, `video_player` doesn’t provide a platform implementation, so attempting to initialize a network video throws:
+  `UnimplementedError: init() has not been implemented.`
+- The product page displayed the raw exception in the UI.
+
+Resolution
+- Detect video support by platform (Android/iOS/macOS/web) and avoid initializing video on unsupported platforms (ex: Windows).
+- Added a clean fallback: show a poster image when available and display “Vidéo indisponible” without exposing the raw exception.
+
+Files
+- `app/lib/features/products/public_product_page.dart`
+
+--------------------------------------------------------------------------------
+2026-02-14 - Public business page: remove Posts + lighter, consistent theme
+
+Problem
+- Public business page showed a “Posts” tab that wasn’t adding value for now.
+- The app looked very dark on many screens (system dark theme), unlike the Dashboard/Home feeling.
+- Some product thumbnails showed “Exception: Invalid image data” (usually when a non-image media was used as an image, or corrupted media).
+
+Resolution
+- Removed the Posts tab from the public business page (kept old widget code commented for possible future reuse).
+- Forced a consistent light theme across the whole app (Material 3 seed already matches Home/Dashboard).
+- Updated landing page branding colors to use the global theme (no more hard-coded orange), and made the footer light.
+- Hardened business product thumbnails:
+  - only choose `media_type == 'image'` for thumbnails
+  - added `errorBuilder` placeholders to avoid showing raw exception text
+
+Files
+- `app/lib/main.dart`
+- `app/lib/features/business/public_business_page.dart`
+- `app/lib/features/public/landing_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Product page: make video hero compact (desktop)
+
+Problem
+- On `PublicProductPage`, products whose primary media is a video (or video fallback on Windows) rendered a very large full-width hero, which looked unprofessional on desktop.
+
+Resolution
+- Made the media hero responsive and compact:
+  - videos use a 16:9 aspect ratio with a max height (~360px) and max width (~720px)
+  - images stay 1:1 but are constrained to a reasonable max width (~520px)
+  - hero is centered so it doesn’t stretch across huge screens
+
+Files
+- `app/lib/features/products/public_product_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - Business creation: add category (DB-driven) + better form UX
+
+Problem
+- Creating a business didn’t ask for a category, so new businesses weren’t automatically categorized (hurts Explore filters/search relevance).
+
+Resolution
+- The create business form now loads categories from `public.categories` and lets the user pick one.
+- On submit, it sends `business_category_id` to the `create_business` Edge Function (optional when categories aren’t available).
+- Improved the form UX (scrollable, better hints, uses FilledButton, better slugify for accented chars).
+
+Files
+- `app/lib/features/business/create_business_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
+2026-02-14 - B3 Subscriptions: real payment -> auto entitlements (orders)
+
+Goal
+- Implement real subscription payment (Stripe / Mobile Money) that automatically enables order reception for a business.
+- Make access expire correctly (no “forever true” flag) while still keeping an admin manual override.
+
+DB change (Supabase SQL)
+- New migration script: `app/_supabase_sql/billing_subscription_v1.sql`
+  - Adds `entitlements.orders_paid_until` (paid subscription validity window)
+  - Extends `subscription_provider` enum with `paydunya` and `stripe` (used by `payments` / `subscriptions`)
+  - Updates `service_requests` insert RLS policy to require:
+    - `can_receive_orders = true` AND (`orders_paid_until > now` OR `orders_grant_until > now`)
+  - Updates `reserve_stock_for_request()` checks to match
+
+Backend (Supabase Edge Functions)
+- Updated `app/supabase/functions/billing_subscribe/index.ts`
+  - Requires auth + checks caller is a business member
+  - Creates a `payments` row (purpose=subscription) and starts checkout:
+    - Mobile Money: PayDunya (`provider=paydunya`, callback -> `payments_callback`)
+    - Card: Stripe (`provider=stripe`, success redirect -> `payments_callback`)
+- Updated `app/supabase/functions/payments_callback/index.ts`
+  - Applies subscription payments by reading `payments.metadata`:
+    - marks `payments.status = paid/failed`
+    - upserts `entitlements` (plan + flags + `orders_paid_until` when available)
+    - inserts a `subscriptions` audit row (best-effort; errors stored in payment metadata)
+  - Keeps legacy fallback for order payments (`apply_payment_reference` RPC)
+
+App (Flutter)
+- Replaced the placeholder billing UI with a real plan selection + payment launch:
+  - `app/lib/features/business/business_billing_page.dart`
+  - Route: `/business/:id/settings/billing` (wired in `app/lib/core/router.dart`)
+  - Dashboard tile added (Monetisation) to open the billing page: `app/lib/features/home/home_page.dart`
+- Updated admin entitlements view to display `orders_paid_until` when present:
+  - `app/lib/features/admin/admin_entitlements_page.dart`
+
+Notes / why this structure
+- `can_receive_orders` alone can’t model expiry; `orders_paid_until` lets RLS + UI enforce “active” correctly without cron jobs.
+- Admin override stays separate (`orders_grant_until`) so you can grant access without payment.
+
+--------------------------------------------------------------------------------
+2026-02-14 - Customer order UX: tracking, cancel, notifications (in-app)
+
+Goal
+- Give customers a real experience:
+  - “My orders” list
+  - Tracking/detail screen with items, history, and chat
+  - Cancel flow (safe)
+  - In-app notifications screen + deep links that work
+
+DB (Supabase SQL)
+- New RPC (customer cancel, only while `status='new'`):
+  - `app/_supabase_sql/b3_customer_order_ux.sql`
+  - Adds `customer_cancel_request(request_id)` (SECURITY DEFINER) + grant execute to authenticated
+
+App (Flutter)
+- Customer orders list:
+  - `app/lib/features/requests/customer_orders_page.dart`
+  - Route: `/my/orders`
+- Customer tracking/detail:
+  - `app/lib/features/requests/customer_order_detail_page.dart`
+  - Shows status, items, history, messages, and allows cancel (only while NEW)
+- Deep-link hub for `/requests/:id` (used by DB notification triggers):
+  - `app/lib/features/requests/request_hub_page.dart`
+  - Resolves whether the user is business-member or the customer, then opens the right UI.
+- Notifications screen:
+  - `app/lib/features/notifications/notifications_page.dart`
+  - Route: `/notifications`
+- Routing + entry points:
+  - `app/lib/core/router.dart` adds `/notifications`, `/my/orders`, `/requests/:rid`
+  - Checkout redirects to tracking after launching payment: `app/lib/features/cart/checkout_page.dart`
+  - Landing page adds shortcuts “Mes commandes” + notifications: `app/lib/features/public/landing_page.dart`
+  - Home page “no business” state now offers Explore / Orders / Notifications: `app/lib/features/home/home_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK

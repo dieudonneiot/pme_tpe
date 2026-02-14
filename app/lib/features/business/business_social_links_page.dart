@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/widgets/app_back_button.dart';
+
 class BusinessSocialLinksPage extends StatefulWidget {
   final String businessId;
   const BusinessSocialLinksPage({super.key, required this.businessId});
@@ -116,6 +118,7 @@ class _BusinessSocialLinksPageState extends State<BusinessSocialLinksPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const AppBackButton(),
         title: const Text('Liens & Réseaux'),
         actions: [
           TextButton(

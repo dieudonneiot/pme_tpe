@@ -409,6 +409,10 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
+        ),
         title: const Text('Explorer les entreprises'),
         actions: [
           IconButton(

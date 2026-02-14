@@ -56,10 +56,18 @@ class _AppState extends State<App> {
       child: MaterialApp.router(
         title: 'PME/TPE',
         debugShowCheckedModeBanner: false,
+        themeMode: ThemeMode.light,
         theme: ThemeData(
           useMaterial3: true,
           colorSchemeSeed: seed,
           brightness: Brightness.light,
+          scaffoldBackgroundColor: const Color(0xFFF7F7FB),
+          appBarTheme: const AppBarTheme(
+            centerTitle: false,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+          ),
           cardTheme: CardThemeData(
             elevation: 1,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

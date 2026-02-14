@@ -36,6 +36,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
   bool _saving = false;
   bool _uploadingLogo = false;
   bool _uploadingCover = false;
+  bool _deleting = false;
 
   String? _error;
   Map<String, dynamic>? business;
@@ -305,10 +306,347 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
     }
   }
 
+  Future<bool> _confirmDeleteBusiness() async {
+    final slug = (business?['slug'] ?? '').toString().trim();
+    final name = (business?['name'] ?? '').toString().trim();
+    final requiredText = slug.isNotEmpty ? slug : 'SUPPRIMER';
+
+    return (await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) {
+            var typed = '';
+            return StatefulBuilder(
+              builder: (context, setLocalState) {
+                final canDelete = typed.trim().toLowerCase() == requiredText.toLowerCase();
+                return AlertDialog(
+                  title: const Text('Supprimer la boutique ?'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.isEmpty
+                            ? 'Cette action va archiver la boutique et la retirer des tableaux de bord.'
+                            : 'Cette action va archiver "$name" et la retirer des tableaux de bord.',
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        slug.isNotEmpty
+                            ? 'Tape le slug pour confirmer: $requiredText'
+                            : 'Tape SUPPRIMER pour confirmer.',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        autofocus: true,
+                        onChanged: (v) => setLocalState(() => typed = v),
+                        decoration: const InputDecoration(
+                          labelText: 'Confirmation',
+                          hintText: '...',
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Annuler'),
+                    ),
+                    ElevatedButton(
+                      onPressed: canDelete ? () => Navigator.of(context).pop(true) : null,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                      child: const Text('Supprimer'),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+        )) ??
+        false;
+  }
+
+  Future<void> _deleteBusiness() async {
+    setState(() {
+      _error = null;
+      _deleting = true;
+    });
+
+    try {
+      await _ensureAuthenticated();
+
+      final ok = await _confirmDeleteBusiness();
+      if (!ok) return;
+
+      final sb = Supabase.instance.client;
+      await sb.rpc('delete_business', params: {'_business_id': widget.businessId});
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Boutique supprimée (archivée).')),
+      );
+      context.go('/home');
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'DB error: ${e.message}');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   String? _publicUrl(String bucket, String? path) {
     if (path == null || path.isEmpty) return null;
     final sb = Supabase.instance.client;
     return sb.storage.from(bucket).getPublicUrl(path);
+  }
+
+  String? _selectedCategoryName() {
+    if (!_dbCategoriesAvailable) return null;
+    final id = _selectedCategoryId.trim();
+    if (id.isEmpty) return null;
+    for (final c in _categories) {
+      if (c.id == id) return c.name;
+    }
+    return null;
+  }
+
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Widget _mediaHeader({
+    required String name,
+    required String slug,
+    required String? logoUrl,
+    required String? coverUrl,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final categoryName = _selectedCategoryName();
+
+    return Card(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                AspectRatio(
+                  aspectRatio: 3.2,
+                  child: InkWell(
+                    onTap: _uploadingCover
+                        ? null
+                        : () => _uploadImage(
+                              bucket: 'business_covers',
+                              column: 'cover_path',
+                            ),
+                    child: coverUrl == null
+                        ? Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  scheme.primary.withAlpha(51),
+                                  scheme.tertiary.withAlpha(46),
+                                  scheme.surfaceContainerHighest,
+                                ],
+                              ),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.image_outlined,
+                                size: 44,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          )
+                        : Image.network(
+                            coverUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: scheme.surfaceContainerHighest,
+                              child: Center(
+                                child: Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 44,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  right: 12,
+                  top: 12,
+                  child: IconButton.filledTonal(
+                    onPressed: _uploadingCover
+                        ? null
+                        : () => _uploadImage(
+                              bucket: 'business_covers',
+                              column: 'cover_path',
+                            ),
+                    tooltip: 'Modifier la couverture',
+                    icon: _uploadingCover
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.photo_camera_outlined),
+                  ),
+                ),
+                Positioned(
+                  left: 16,
+                  bottom: -34,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        width: 88,
+                        height: 88,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: scheme.surface,
+                          border: Border.all(color: scheme.surface, width: 4),
+                          boxShadow: const [
+                            BoxShadow(
+                              blurRadius: 18,
+                              offset: Offset(0, 10),
+                              color: Color(0x33000000),
+                            ),
+                          ],
+                        ),
+                        child: InkWell(
+                          onTap: _uploadingLogo
+                              ? null
+                              : () => _uploadImage(
+                                    bucket: 'business_logos',
+                                    column: 'logo_path',
+                                  ),
+                          child: ClipOval(
+                            child: logoUrl == null
+                                ? Container(
+                                    color: scheme.surfaceContainerHighest,
+                                    child: Icon(
+                                      Icons.storefront_outlined,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  )
+                                : Image.network(
+                                    logoUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      color: scheme.surfaceContainerHighest,
+                                      child: Icon(
+                                        Icons.broken_image_outlined,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: -6,
+                        bottom: -6,
+                        child: IconButton.filledTonal(
+                          onPressed: _uploadingLogo
+                              ? null
+                              : () => _uploadImage(
+                                    bucket: 'business_logos',
+                                    column: 'logo_path',
+                                  ),
+                          tooltip: 'Modifier le logo',
+                          icon: _uploadingLogo
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.edit_outlined),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 46),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name.isEmpty ? 'Boutique' : name,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            if (slug.isNotEmpty)
+                              Text(
+                                '@$slug',
+                                style: TextStyle(color: scheme.onSurfaceVariant),
+                              ),
+                          ],
+                        ),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: () {
+                          if (slug.isEmpty) return;
+                          context.push('/b/$slug');
+                        },
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.public, size: 18),
+                            SizedBox(width: 8),
+                            Text('Aperçu public'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      if (categoryName != null)
+                        Chip(
+                          label: Text(categoryName),
+                          side: BorderSide(color: scheme.outlineVariant),
+                          backgroundColor: scheme.surface,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -316,6 +654,10 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+
+    final scheme = Theme.of(context).colorScheme;
+    final name = (business?['name'] ?? '').toString();
+    final slug = (business?['slug'] ?? '').toString();
 
     final logoUrl = _publicUrl(
       'business_logos',
@@ -328,7 +670,7 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Paramètres - ${business?['name'] ?? ''}'),
+        title: const Text('Paramètres'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
@@ -352,179 +694,177 @@ class _BusinessSettingsPageState extends State<BusinessSettingsPage> {
                   const SizedBox(height: 10),
                 ],
 
-                const Text(
-                  'Médias',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
+                _mediaHeader(name: name, slug: slug, logoUrl: logoUrl, coverUrl: coverUrl),
 
-                Row(
-                  children: [
-                    Expanded(
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            children: [
-                              const Text('Logo'),
-                              const SizedBox(height: 8),
-                              SizedBox(
-                                height: 120,
-                                child: logoUrl == null
-                                    ? const Center(child: Text('Aucun logo'))
-                                    : Image.network(
-                                        logoUrl,
-                                        fit: BoxFit.contain,
-                                      ),
+                const SizedBox(height: 16),
+                _sectionTitle('Infos mini-site'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        if (_dbCategoriesAvailable) ...[
+                          DropdownButtonFormField<String>(
+                            key: ValueKey(_selectedCategoryId),
+                            initialValue:
+                                _selectedCategoryId.isEmpty ? '' : _selectedCategoryId,
+                            decoration: const InputDecoration(labelText: 'Catégorie'),
+                            items: [
+                              const DropdownMenuItem(
+                                value: '',
+                                child: Text('Aucune'),
                               ),
-                              const SizedBox(height: 8),
-                              ElevatedButton(
-                                onPressed: _uploadingLogo
-                                    ? null
-                                    : () => _uploadImage(
-                                        bucket: 'business_logos',
-                                        column: 'logo_path',
-                                      ),
-                                child: Text(
-                                  _uploadingLogo ? '...' : 'Uploader logo',
+                              ..._categories.map(
+                                (c) => DropdownMenuItem(
+                                  value: c.id,
+                                  child: Text(c.name),
                                 ),
                               ),
                             ],
+                            onChanged: (v) => setState(() => _selectedCategoryId = v ?? ''),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        TextField(
+                          controller: _whatsapp,
+                          decoration: const InputDecoration(
+                            labelText: 'WhatsApp',
+                            prefixIcon: Icon(Icons.chat_outlined),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _address,
+                          decoration: const InputDecoration(
+                            labelText: 'Adresse',
+                            prefixIcon: Icon(Icons.location_on_outlined),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _desc,
+                          decoration: const InputDecoration(
+                            labelText: 'Description',
+                            prefixIcon: Icon(Icons.description_outlined),
+                          ),
+                          maxLines: 3,
+                        ),
+                      ],
                     ),
-                    Expanded(
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+                _sectionTitle('Avancé'),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        FilledButton.tonal(
+                          onPressed: () => context.push(
+                            '/business/${widget.businessId}/settings/hours',
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text('Couverture'),
-                              const SizedBox(height: 8),
-                              SizedBox(
-                                height: 120,
-                                child: coverUrl == null
-                                    ? const Center(
-                                        child: Text('Aucune couverture'),
-                                      )
-                                    : Image.network(
-                                        coverUrl,
-                                        fit: BoxFit.cover,
-                                      ),
-                              ),
-                              const SizedBox(height: 8),
-                              ElevatedButton(
-                                onPressed: _uploadingCover
-                                    ? null
-                                    : () => _uploadImage(
-                                        bucket: 'business_covers',
-                                        column: 'cover_path',
-                                      ),
-                                child: Text(
-                                  _uploadingCover
-                                      ? '...'
-                                      : 'Uploader couverture',
-                                ),
-                              ),
+                              Icon(Icons.access_time, size: 18),
+                              SizedBox(width: 8),
+                              Text('Horaires'),
                             ],
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-
-                const SizedBox(height: 16),
-                const Text(
-                  'Infos mini-site',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-
-                if (_dbCategoriesAvailable) ...[
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(_selectedCategoryId),
-                    initialValue: _selectedCategoryId.isEmpty ? '' : _selectedCategoryId,
-                    decoration: const InputDecoration(labelText: 'Catégorie'),
-                    items: [
-                      const DropdownMenuItem(
-                        value: '',
-                        child: Text('Aucune'),
-                      ),
-                      ..._categories.map(
-                        (c) => DropdownMenuItem(
-                          value: c.id,
-                          child: Text(c.name),
+                        FilledButton.tonal(
+                          onPressed: () => context.push(
+                            '/business/${widget.businessId}/settings/links',
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.link, size: 18),
+                              SizedBox(width: 8),
+                              Text('Liens'),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _selectedCategoryId = v ?? ''),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-
-                TextField(
-                  controller: _whatsapp,
-                  decoration: const InputDecoration(labelText: 'WhatsApp'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _address,
-                  decoration: const InputDecoration(labelText: 'Adresse'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _desc,
-                  decoration: const InputDecoration(labelText: 'Description'),
-                  maxLines: 3,
-                ),
-
-                const SizedBox(height: 16),
-                const Text(
-                  'B1 – Avancé',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 10),
-
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    OutlinedButton.icon(
-                    onPressed: () {
-                      final slug = (business?['slug'] ?? '').toString();
-                      if (slug.isEmpty) return;
-                      context.push('/b/$slug');
-                    },                      icon: const Icon(Icons.public),
-                      label: const Text('Ouvrir boutique publique'),
+                        FilledButton.tonal(
+                          onPressed: () => context.push(
+                            '/business/${widget.businessId}/settings/domains',
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.domain, size: 18),
+                              SizedBox(width: 8),
+                              Text('Domaines'),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    OutlinedButton.icon(
-                      onPressed: () => context.push('/business/${widget.businessId}/settings/hours'),
-                      icon: const Icon(Icons.access_time),
-                      label: const Text('Horaires'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => context.push('/business/${widget.businessId}/settings/links'),
-                      icon: const Icon(Icons.link),
-                      label: const Text('Liens'),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => context.push('/business/${widget.businessId}/settings/domains'),
-                      icon: const Icon(Icons.domain),
-                      label: const Text('Domaines'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _saveText,
-                    child: Text(_saving ? '...' : 'Enregistrer'),
                   ),
                 ),
+
+                const SizedBox(height: 20),
+                _sectionTitle('Zone dangereuse'),
+                Card(
+                  color: scheme.errorContainer.withAlpha(89),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Supprimer archive la boutique (elle n'apparaît plus publiquement).",
+                          style: TextStyle(color: scheme.onErrorContainer),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _deleting ? null : _deleteBusiness,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: scheme.error,
+                              foregroundColor: scheme.onError,
+                            ),
+                            icon: _deleting
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.delete),
+                            label: const Text('Supprimer la boutique'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 90),
               ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: SizedBox(
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: _saving ? null : _saveText,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check),
+              label: const Text('Enregistrer'),
             ),
           ),
         ),

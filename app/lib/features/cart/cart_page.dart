@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'cart_scope.dart';
 
+import '../../core/widgets/app_back_button.dart';
+
 class CartPage extends StatelessWidget {
   const CartPage({super.key});
 
@@ -10,7 +12,10 @@ class CartPage extends StatelessWidget {
     final cart = CartScope.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Panier')),
+      appBar: AppBar(
+        leading: const AppBackButton(fallbackPath: '/explore'),
+        title: const Text('Panier'),
+      ),
       body: AnimatedBuilder(
         animation: cart,
         builder: (context, child) {

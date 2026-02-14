@@ -288,9 +288,10 @@ class _ExplorePageState extends State<ExplorePage> with RouteAware, WidgetsBindi
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: context.canPop(),
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
+        context.go('/');
       },
       child: Scaffold(
         body: _loading
@@ -355,6 +356,18 @@ class _ExplorePageState extends State<ExplorePage> with RouteAware, WidgetsBindi
                               right: 16,
                               child: Row(
                                 children: [
+                                  IconButton.filledTonal(
+                                    tooltip: 'Retour',
+                                    onPressed: () {
+                                      if (context.canPop()) {
+                                        context.pop();
+                                      } else {
+                                        context.go('/');
+                                      }
+                                    },
+                                    icon: const Icon(Icons.arrow_back),
+                                  ),
+                                  const SizedBox(width: 10),
                                   const Text('Explorer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                                   const Spacer(),
                                   TextButton.icon(

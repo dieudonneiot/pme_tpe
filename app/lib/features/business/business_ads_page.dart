@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/widgets/app_back_button.dart';
+
 class BusinessAdsPage extends StatelessWidget {
   final String businessId;
   const BusinessAdsPage({super.key, required this.businessId});
@@ -7,7 +9,10 @@ class BusinessAdsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Publicités')),
+      appBar: AppBar(
+        leading: const AppBackButton(),
+        title: const Text('Publicités'),
+      ),
       body: const Center(
         child: Padding(
           padding: EdgeInsets.all(16),

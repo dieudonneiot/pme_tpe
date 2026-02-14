@@ -80,7 +80,7 @@ Notes:
 
 After creating categories + the `businesses.business_category_id` column, existing businesses will usually have `business_category_id = NULL`.
 
-Option A (best): if you already used the mapping table `public.business_categories (business_id, category_id)`, promote one mapping row to be the “primary” category:
+Option A (best): if you already used the mapping table `public.business_categories (business_id, category_id)`, promote one mapping row to be the "primary" category:
 
 ```sql
 with pick as (
@@ -170,9 +170,92 @@ create policy "App admins manage categories"
 
 Tip: a full local script is available at `app/_supabase_sql/admin_manage_categories.sql` (ignored by Git).
 
+## Business delete (archive / soft-delete)
+
+To add a safe “delete business” action (actually archives it to avoid breaking orders/products FKs), run:
+- `app/_supabase_sql/delete_business.sql`
+
+What it does:
+- Adds `businesses.deleted_at` if missing
+- Creates `public.delete_business(_business_id uuid)` (SECURITY DEFINER)
+- Only allows **business owner/admin** (or **app admin**) to archive
+- Sets `businesses.is_active=false` and `deleted_at=now()`
+- Appends a suffix to `businesses.slug` to free the original slug
+- Removes all `business_members` rows for that business (so it disappears from dashboards)
+
+## Product media (photos/videos/PDF)
+
+The app uses:
+- Table: `public.product_media (id, product_id, media_type, storage_path, created_at)`
+- Storage bucket: `product_media`
+
+Important: Storage RLS expects the object path to start with the business id as the first segment:
+`<business_uuid>/products/<product_uuid>/...`
+
+### Cover + ordering (recommended)
+
+To allow business users to choose a cover image + reorder media, run:
+- `app/_supabase_sql/product_media_cover_ordering.sql` (local, ignored by Git)
+
+This migration adds:
+- `public.product_media.sort_order int not null default 0`
+- `public.products.primary_media_id uuid null` (FK → `public.product_media.id`, `on delete set null`)
+- An UPDATE RLS policy so business members can reorder `product_media`.
+
+### RLS policies
+
+If upload/delete/reorder doesn’t work, verify:
+- `public.product_media` has select/insert/update/delete policies for business members:
+  - `app/_supabase_sql/product_media_policies.sql` (only affects `public.product_media`)
+- Storage policies exist for bucket `product_media`:
+  - `app/_supabase_sql/storage_product_media_policies.sql` (touches `storage.objects`, may require privileged project role)
+
+If you see `ERROR: 42501: must be owner of table objects`, it means the SQL role you used can’t modify `storage.objects`.
+In that case, configure Storage rules in Supabase Dashboard (Storage → Policies) or ask the project owner to run the Storage script.
+
+## Inventory pro (low-stock threshold)
+
+To enable “low stock” alerts per variant, run:
+- `app/_supabase_sql/variant_low_stock_threshold.sql` (adds `product_variants.low_stock_threshold`)
+
+## B3 Orders: admin grant + stock reservation
+
+To allow a business to receive orders either via subscription OR an admin grant, and to automatically reserve/release
+stock when a request is accepted/cancelled:
+
+1) Run admin entitlements setup:
+- `app/_supabase_sql/admin_manage_entitlements.sql`
+  - Adds `entitlements.orders_grant_until`
+  - Allows app admins to read all businesses and update entitlements (RLS)
+
+2) Run B3 stock reservation:
+- `app/_supabase_sql/b3_stock_reservation.sql`
+  - Adds `service_request_items.variant_id`
+  - Adds `service_requests.stock_reserved_at / stock_released_at`
+  - Updates `requests_insert_customer` policy to allow order creation if subscribed OR granted
+  - Adds RPC: `set_request_status(request_id, next_status)` which reserves/releases stock automatically
+
+## B3 Subscriptions (real payments): paid-until + providers
+
+The app can enable "receive orders" using **paid subscription validity** + an optional **admin grant**:
+- Paid subscription validity: `entitlements.orders_paid_until`
+- Admin manual override: `entitlements.orders_grant_until`
+
+Recommended migration (idempotent):
+- `app/_supabase_sql/billing_subscription_v1.sql`
+  - Adds `orders_paid_until`
+  - Extends `subscription_provider` enum with `paydunya` + `stripe` (for `payments` / `subscriptions`)
+  - Updates the `service_requests` insert RLS policy accordingly
+
+## B3 Customer UX: cancel flow
+
+To allow a customer to cancel their order safely (only while `status='new'`):
+- `app/_supabase_sql/b3_customer_order_ux.sql`
+  - Adds RPC: `customer_cancel_request(request_id)`
+
 ## Extracted reference (local)
 
-If you keep a long “all-in-one” schema / SQL history file (like `docs/Summary_Of_All_done.txt`), you can extract useful slices into this folder so you don’t have to scroll/search every time.
+If you keep a long "all-in-one" schema / SQL history file (like `docs/Summary_Of_All_done.txt`), you can extract useful slices into this folder so you don’t have to scroll/search every time.
 
 Local files created from `docs/Summary_Of_All_done.txt`:
 - `app/_supabase_sql/schema_349-882_from_Summary_Of_All_done.txt`

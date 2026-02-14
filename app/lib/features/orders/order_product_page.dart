@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/widgets/app_back_button.dart';
+
 class OrderProductPage extends StatefulWidget {
   final String productId;
   const OrderProductPage({super.key, required this.productId});
@@ -68,7 +70,8 @@ class _OrderProductPageState extends State<OrderProductPage> {
       messenger.showSnackBar(
         const SnackBar(content: Text("Connecte-toi d'abord pour commander.")),
       );
-      router.push('/login');
+      final next = Uri.encodeComponent('/p/${widget.productId}');
+      router.push('/login?next=$next');
       return;
     }
 
@@ -168,7 +171,10 @@ class _OrderProductPageState extends State<OrderProductPage> {
 
     if (p == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Commander')),
+        appBar: AppBar(
+          leading: const AppBackButton(fallbackPath: '/explore'),
+          title: const Text('Commander'),
+        ),
         body: Center(
           child: _error == null
               ? const CircularProgressIndicator()
@@ -184,7 +190,10 @@ class _OrderProductPageState extends State<OrderProductPage> {
     final price = (p['price_amount'] ?? '').toString();
 
     return Scaffold(
-      appBar: AppBar(title: Text('Commander $title')),
+      appBar: AppBar(
+        leading: const AppBackButton(fallbackPath: '/explore'),
+        title: Text('Commander $title'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Form(

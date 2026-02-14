@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/widgets/app_back_button.dart';
 import 'cart_scope.dart';
 
 class CheckoutPage extends StatefulWidget {
@@ -79,16 +80,32 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
       // 2) Créer service_request_items
       final itemsPayload = cart.items.map((it) {
+        final parts = it.productId.split('::');
+        final productId = parts.first;
+        final variantId = parts.length > 1 ? parts[1] : null;
         return {
           'request_id': requestId,
-          'product_id': it.productId.split('::').first,
+          'product_id': productId,
+          'variant_id': (variantId == null || variantId.isEmpty) ? null : variantId,
           'title_snapshot': it.title,
           'qty': it.qty,
           'unit_price_snapshot': it.unitPrice,
         };
       }).toList();
 
-      await sb.from('service_request_items').insert(itemsPayload);
+      try {
+        await sb.from('service_request_items').insert(itemsPayload);
+      } on PostgrestException catch (e) {
+        // Backward-compatible: variant_id column might not exist yet.
+        if (e.message.toLowerCase().contains('variant_id')) {
+          for (final r in itemsPayload) {
+            r.remove('variant_id');
+          }
+          await sb.from('service_request_items').insert(itemsPayload);
+        } else {
+          rethrow;
+        }
+      }
 
       // 3) Appeler Edge Function paiement (nom = dossier de la function)
       final res = await sb.functions.invoke(
@@ -119,9 +136,25 @@ class _CheckoutPageState extends State<CheckoutPage> {
       cart.clear();
 
       if (!mounted) return;
-      router.pop(); // retour panier
+      router.go('/requests/$requestId'); // suivi commande
     } on PostgrestException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Erreur commande: ${e.message}')));
+      final m = e.message.toLowerCase();
+      final isRls =
+          m.contains('row-level security') || m.contains('rls') || e.code == '42501';
+      final isEntitlement =
+          m.contains('not allowed to receive orders') || m.contains('entitlements') || m.contains('requests_insert_customer');
+
+      if (isRls && isEntitlement) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Cette boutique n'est pas autorisée à recevoir des commandes (abonnement ou grant admin requis).",
+            ),
+          ),
+        );
+      } else {
+        messenger.showSnackBar(SnackBar(content: Text('Erreur commande: ${e.message}')));
+      }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Erreur: $e')));
     } finally {
@@ -136,7 +169,10 @@ class _CheckoutPageState extends State<CheckoutPage> {
     final cart = CartScope.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Finaliser la commande')),
+      appBar: AppBar(
+        leading: const AppBackButton(fallbackPath: '/cart'),
+        title: const Text('Finaliser la commande'),
+      ),
       body: AnimatedBuilder(
         animation: cart,
         builder: (context, child) {

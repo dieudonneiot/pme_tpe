@@ -1,5 +1,6 @@
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -41,6 +42,14 @@ class _PublicProductPageState extends State<PublicProductPage>
 
   // Audio: OFF by default (page-level)
   bool _muted = true;
+
+  bool get _videoSupported {
+    if (kIsWeb) return true;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android || TargetPlatform.iOS || TargetPlatform.macOS => true,
+      _ => false,
+    };
+  }
 
   // Route/app visibility => hard-stop video audio when not visible
   bool _routeVisible = true;
@@ -100,15 +109,37 @@ class _PublicProductPageState extends State<PublicProductPage>
     });
 
     try {
-      final p = await _sb
-          .from('products')
-          .select(
-            'id,title,description,price_amount,currency,business_id,'
-            'businesses(id,name,slug),'
-            'product_media(id,media_type,storage_path)',
-          )
-          .eq('id', widget.productId)
-          .maybeSingle();
+      Map<String, dynamic>? p;
+      try {
+        final row = await _sb
+            .from('products')
+            .select(
+              'id,title,description,price_amount,currency,business_id,primary_media_id,'
+              'businesses(id,name,slug),'
+              'product_media!product_media_product_id_fkey(id,media_type,storage_path,sort_order,created_at)',
+             )
+            .eq('id', widget.productId)
+            .order('sort_order', referencedTable: 'product_media', ascending: true)
+            .order('created_at', referencedTable: 'product_media', ascending: true)
+            .maybeSingle();
+        if (row != null) p = Map<String, dynamic>.from(row as Map);
+      } on PostgrestException catch (e) {
+        final m = e.message.toLowerCase();
+        if (m.contains('primary_media_id') || m.contains('sort_order')) {
+          final row = await _sb
+              .from('products')
+              .select(
+                'id,title,description,price_amount,currency,business_id,'
+                'businesses(id,name,slug),'
+                'product_media!product_media_product_id_fkey(id,media_type,storage_path)',
+              )
+              .eq('id', widget.productId)
+              .maybeSingle();
+          if (row != null) p = Map<String, dynamic>.from(row as Map);
+        } else {
+          rethrow;
+        }
+      }
 
       if (p == null) {
         if (!mounted) return;
@@ -129,7 +160,7 @@ class _PublicProductPageState extends State<PublicProductPage>
 
       if (!mounted) return;
       setState(() {
-        _product = Map<String, dynamic>.from(p as Map);
+        _product = p;
         _variants = variants;
 
         if (_variants.isNotEmpty) {
@@ -159,9 +190,25 @@ class _PublicProductPageState extends State<PublicProductPage>
     return [];
   }
 
-  ({String? url, String? type}) _primaryMedia() {
+  ({String? url, String? type}) _primaryMedia({bool allowVideo = true}) {
     final list = _mediaList();
     if (list.isEmpty) return (url: null, type: null);
+
+    final primaryId = _product?['primary_media_id']?.toString();
+    if (primaryId != null && primaryId.isNotEmpty) {
+      for (final m in list) {
+        if (m['id']?.toString() == primaryId) {
+          final type = (m['media_type'] ?? '').toString().toLowerCase();
+          if (!allowVideo && type == 'video') {
+            break; // ignore primary video when the platform can't play it
+          }
+          final path = (m['storage_path'] ?? '').toString();
+          if (path.isEmpty) return (url: null, type: type.isEmpty ? null : type);
+          final url = _sb.storage.from(_productMediaBucket).getPublicUrl(path);
+          return (url: url, type: type.isEmpty ? null : type);
+        }
+      }
+    }
 
     // Prefer image as hero if available
     Map<String, dynamic> chosen = list.first;
@@ -182,7 +229,18 @@ class _PublicProductPageState extends State<PublicProductPage>
   }
 
   // Used for cart thumb: use primary hero media (prefer image)
-  String? _mediaUrlForCart() => _primaryMedia().url;
+  String? _mediaUrlForCart() => _primaryMedia(allowVideo: false).url;
+
+  String? _posterUrl() {
+    for (final m in _mediaList()) {
+      final t = (m['media_type'] ?? '').toString().toLowerCase();
+      if (t != 'image') continue;
+      final path = (m['storage_path'] ?? '').toString();
+      if (path.isEmpty) continue;
+      return _sb.storage.from(_productMediaBucket).getPublicUrl(path);
+    }
+    return null;
+  }
 
   // ---------------- CART ----------------
 
@@ -391,9 +449,10 @@ class _PublicProductPageState extends State<PublicProductPage>
     }
     final slug = (bizMap?['slug'] ?? '').toString();
 
-    final media = _primaryMedia();
+    final media = _primaryMedia(allowVideo: _videoSupported);
     final mediaUrl = media.url;
     final mediaType = (media.type ?? '').toLowerCase();
+    final posterUrl = _posterUrl();
 
     num? basePrice = p['price_amount'] as num?;
     String baseCur = (p['currency'] ?? 'XOF').toString();
@@ -410,18 +469,41 @@ class _PublicProductPageState extends State<PublicProductPage>
       padding: const EdgeInsets.all(16),
       children: [
         if (mediaUrl != null)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: _MediaHero(
-                url: mediaUrl,
-                type: mediaType,
-                active: _pageActive,
-                muted: _muted,
-                onToggleMute: () => setState(() => _muted = !_muted),
-              ),
-            ),
+          LayoutBuilder(
+            builder: (context, c) {
+              final isVideo = mediaType == 'video';
+              final aspect = isVideo ? (16 / 9) : 1.0;
+
+              // Keep media hero compact on large screens (desktop).
+              double maxW = isVideo ? 720 : 520;
+              final maxH = isVideo ? 360.0 : 520.0;
+              final byH = maxH * aspect;
+              if (maxW > byH) maxW = byH;
+
+              var w = c.maxWidth;
+              if (w > maxW) w = maxW;
+
+              return Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: w),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: AspectRatio(
+                      aspectRatio: aspect,
+                      child: _MediaHero(
+                        url: mediaUrl,
+                        type: mediaType,
+                        videoSupported: _videoSupported,
+                        posterUrl: posterUrl,
+                        active: _pageActive,
+                        muted: _muted,
+                        onToggleMute: () => setState(() => _muted = !_muted),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         const SizedBox(height: 14),
         Text(title,
@@ -495,6 +577,8 @@ class _PublicProductPageState extends State<PublicProductPage>
 class _MediaHero extends StatelessWidget {
   final String url;
   final String type; // image | video
+  final bool videoSupported;
+  final String? posterUrl;
   final bool active; // route visible + app resumed
   final bool muted;
   final VoidCallback onToggleMute;
@@ -502,6 +586,8 @@ class _MediaHero extends StatelessWidget {
   const _MediaHero({
     required this.url,
     required this.type,
+    required this.videoSupported,
+    required this.posterUrl,
     required this.active,
     required this.muted,
     required this.onToggleMute,
@@ -512,8 +598,48 @@ class _MediaHero extends StatelessWidget {
     final t = type.toLowerCase();
 
     if (t == 'video') {
+      if (!videoSupported) {
+        final p = posterUrl;
+        if (p != null && p.isNotEmpty) {
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(p, fit: BoxFit.cover),
+              BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Container(color: Colors.black.withAlpha(50)),
+              ),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(115),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Text(
+                    'Vidéo indisponible sur cet appareil',
+                    style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w800),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+        return Container(
+          color: Colors.black,
+          alignment: Alignment.center,
+          child: const Text(
+            'Vidéo indisponible sur cet appareil',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w700),
+          ),
+        );
+      }
+
       return _VideoHero(
         url: url,
+        posterUrl: posterUrl,
         active: active,
         muted: muted,
         onToggleMute: onToggleMute,
@@ -554,12 +680,14 @@ class _MediaHero extends StatelessWidget {
 
 class _VideoHero extends StatefulWidget {
   final String url;
+  final String? posterUrl;
   final bool active;
   final bool muted;
   final VoidCallback onToggleMute;
 
   const _VideoHero({
     required this.url,
+    required this.posterUrl,
     required this.active,
     required this.muted,
     required this.onToggleMute,
@@ -697,11 +825,38 @@ class _VideoHeroState extends State<_VideoHero> {
   @override
   Widget build(BuildContext context) {
     if (_err != null) {
+      final poster = widget.posterUrl;
+      if ((poster ?? '').isNotEmpty) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(poster!, fit: BoxFit.cover),
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Container(color: Colors.black.withAlpha(50)),
+            ),
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withAlpha(115),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Text(
+                  'Vidéo indisponible',
+                  style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w800),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          ],
+        );
+      }
       return Container(
         color: Colors.black,
         alignment: Alignment.center,
         child: Text(
-          'Impossible de lire la vidéo.\n$_err',
+          'Vidéo indisponible',
           textAlign: TextAlign.center,
           style: const TextStyle(color: Colors.white70),
         ),

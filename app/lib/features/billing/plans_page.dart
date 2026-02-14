@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/widgets/app_back_button.dart';
+
 class PlansPage extends StatefulWidget {
   const PlansPage({super.key});
   @override
@@ -41,7 +43,10 @@ class _PlansPageState extends State<PlansPage> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Choisir un plan')),
+      appBar: AppBar(
+        leading: const AppBackButton(),
+        title: const Text('Choisir un plan'),
+      ),
       body: ListView.builder(
         itemCount: _plans.length,
         itemBuilder: (ctx, i) {

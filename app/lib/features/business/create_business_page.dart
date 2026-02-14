@@ -2,6 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+class _BusinessCategory {
+  final String id;
+  final String name;
+  final int sortOrder;
+
+  const _BusinessCategory({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+  });
+
+  factory _BusinessCategory.fromRow(Map<String, dynamic> row) {
+    return _BusinessCategory(
+      id: (row['id'] ?? '').toString(),
+      name: (row['name'] ?? '').toString(),
+      sortOrder: (row['sort_order'] is int) ? row['sort_order'] as int : 0,
+    );
+  }
+}
+
 class CreateBusinessPage extends StatefulWidget {
   const CreateBusinessPage({super.key});
 
@@ -18,6 +38,16 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
 
   bool _loading = false;
   String? _error;
+
+  bool _dbCategoriesAvailable = false;
+  final _categories = <_BusinessCategory>[];
+  String _selectedCategoryId = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategories();
+  }
 
   @override
   void dispose() {
@@ -54,6 +84,48 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
     return s;
   }
 
+  Future<void> _loadCategories() async {
+    try {
+      final sb = Supabase.instance.client;
+      dynamic resp;
+      try {
+        resp = await sb
+            .from('categories')
+            .select('id,name,sort_order')
+            .order('sort_order', ascending: true)
+            .order('name', ascending: true);
+      } on PostgrestException catch (e) {
+        if (e.message.contains('sort_order')) {
+          resp = await sb.from('categories').select('id,name').order('name', ascending: true);
+        } else {
+          rethrow;
+        }
+      }
+
+      final rows = (resp as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final cats = rows.map(_BusinessCategory.fromRow).where((c) => c.id.isNotEmpty).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = cats.isNotEmpty;
+        _categories
+          ..clear()
+          ..addAll(cats);
+        final ids = _categories.map((c) => c.id).toSet();
+        if (_selectedCategoryId.isNotEmpty && !ids.contains(_selectedCategoryId)) {
+          _selectedCategoryId = '';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _dbCategoriesAvailable = false;
+        _categories.clear();
+        _selectedCategoryId = '';
+      });
+    }
+  }
+
   Future<void> _create() async {
     final name = _name.text.trim();
     final slug = _slug.text.trim();
@@ -64,6 +136,10 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
     }
     if (slug.isEmpty) {
       setState(() => _error = 'Slug requis (ex: mon-boutique).');
+      return;
+    }
+    if (_dbCategoriesAvailable && _selectedCategoryId.isEmpty) {
+      setState(() => _error = 'Catégorie requise.');
       return;
     }
 
@@ -81,12 +157,24 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
         throw Exception('Session manquante. Reconnecte-toi.');
       }
 
+      // Best-effort slug uniqueness hint (server still enforces uniqueness)
+      try {
+        final existing = await sb.from('businesses').select('id').eq('slug', slug).maybeSingle();
+        if (existing != null) {
+          throw Exception('Ce slug est déjà utilisé. Choisis-en un autre.');
+        }
+      } catch (e) {
+        // Ignore if RLS blocks it; server will validate.
+        if (e.toString().contains('déjà utilisé')) rethrow;
+      }
+
       // 2) Appeler la function
       final res = await sb.functions.invoke(
         'create_business',
         body: {
           'name': name,
           'slug': slug,
+          'business_category_id': _selectedCategoryId.isEmpty ? null : _selectedCategoryId,
           'description': _desc.text.trim().isEmpty ? null : _desc.text.trim(),
           'whatsapp_phone': _whatsapp.text.trim().isEmpty
               ? null
@@ -144,12 +232,13 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
           constraints: const BoxConstraints(maxWidth: 720),
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(
+            child: ListView(
               children: [
                 TextField(
                   controller: _name,
                   decoration: const InputDecoration(
                     labelText: 'Nom entreprise',
+                    hintText: 'Ex: Leo boutique',
                   ),
                   onChanged: (v) {
                     if (_slug.text.isEmpty) {
@@ -162,9 +251,25 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
                   controller: _slug,
                   decoration: const InputDecoration(
                     labelText: 'Slug (unique) ex: mon-boutique',
+                    hintText: 'ex: leo-boutique',
                   ),
                 ),
                 const SizedBox(height: 10),
+                if (_dbCategoriesAvailable) ...[
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(_selectedCategoryId),
+                    initialValue: _selectedCategoryId.isEmpty ? '' : _selectedCategoryId,
+                    decoration: const InputDecoration(labelText: 'Catégorie'),
+                    items: [
+                      const DropdownMenuItem(value: '', child: Text('Choisir...')),
+                      ..._categories.map(
+                        (c) => DropdownMenuItem(value: c.id, child: Text(c.name)),
+                      ),
+                    ],
+                    onChanged: _loading ? null : (v) => setState(() => _selectedCategoryId = v ?? ''),
+                  ),
+                  const SizedBox(height: 10),
+                ],
                 TextField(
                   controller: _whatsapp,
                   decoration: const InputDecoration(
@@ -174,12 +279,18 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _address,
-                  decoration: const InputDecoration(labelText: 'Adresse'),
+                  decoration: const InputDecoration(
+                    labelText: 'Adresse (ville/quartier)',
+                    hintText: 'Ex: Lomé, Agoè ...',
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _desc,
-                  decoration: const InputDecoration(labelText: 'Description'),
+                  decoration: const InputDecoration(
+                    labelText: 'Description',
+                    hintText: 'Décris brièvement ton activité et ce que tu proposes.',
+                  ),
                   maxLines: 3,
                 ),
                 if (_error != null) ...[
@@ -189,10 +300,15 @@ class _CreateBusinessPageState extends State<CreateBusinessPage> {
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: FilledButton(
                     onPressed: _loading ? null : _create,
                     child: Text(_loading ? '...' : 'Créer'),
                   ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "Tu pourras ajouter le logo, la couverture, les horaires et les liens après la création.",
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ],
             ),

@@ -133,11 +133,12 @@ class _LandingPageState extends State<LandingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final width = MediaQuery.sizeOf(context).width;
     final contentMaxWidth = math.min(1100.0, width);
+    final compactActions = width < 760;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
         titleSpacing: 12,
         title: Row(
@@ -145,8 +146,8 @@ class _LandingPageState extends State<LandingPage> {
             Container(
               width: 34,
               height: 34,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF97316),
+              decoration: BoxDecoration(
+                color: scheme.primary,
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
@@ -166,6 +167,11 @@ class _LandingPageState extends State<LandingPage> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Admin',
+            onPressed: () => context.push('/admin/categories'),
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+          ),
           PopupMenuButton<String>(
             tooltip: 'Langue',
             itemBuilder:
@@ -182,24 +188,72 @@ class _LandingPageState extends State<LandingPage> {
             },
           ),
           const SizedBox(width: 6),
-          if (_loggedIn)
-            TextButton(
-              onPressed: () => context.go('/home'),
-              child: const Text('Dashboard'),
-            )
-          else
-            FilledButton.icon(
-              onPressed: () => context.push('/login'),
-              icon: const Icon(Icons.person_add),
-              label: const Text("S'inscrire"),
-            ),
-          const SizedBox(width: 8),
-          if (_loggedIn)
-            IconButton(
-              tooltip: 'Déconnexion',
-              onPressed: _signOut,
-              icon: const Icon(Icons.logout),
-            ),
+          if (compactActions) ...[
+            if (_loggedIn)
+              PopupMenuButton<String>(
+                tooltip: 'Menu',
+                icon: const Icon(Icons.account_circle_outlined),
+                onSelected: (v) async {
+                  switch (v) {
+                    case 'dashboard':
+                      context.go('/home');
+                      break;
+                    case 'orders':
+                      context.push('/my/orders');
+                      break;
+                    case 'notifications':
+                      context.push('/notifications');
+                      break;
+                    case 'logout':
+                      await _signOut();
+                      break;
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'dashboard', child: Text('Dashboard')),
+                  PopupMenuItem(value: 'orders', child: Text('Mes commandes')),
+                  PopupMenuItem(value: 'notifications', child: Text('Notifications')),
+                  PopupMenuDivider(),
+                  PopupMenuItem(value: 'logout', child: Text('Déconnexion')),
+                ],
+              )
+            else
+              IconButton(
+                tooltip: 'Connexion',
+                onPressed: () => context.push('/login'),
+                icon: const Icon(Icons.login),
+              ),
+          ] else ...[
+            if (_loggedIn)
+              TextButton(
+                onPressed: () => context.go('/home'),
+                child: const Text('Dashboard'),
+              )
+            else
+              FilledButton.icon(
+                onPressed: () => context.push('/login'),
+                icon: const Icon(Icons.person_add),
+                label: const Text("S'inscrire"),
+              ),
+            if (_loggedIn)
+              TextButton(
+                onPressed: () => context.push('/my/orders'),
+                child: const Text('Mes commandes'),
+              ),
+            if (_loggedIn)
+              IconButton(
+                tooltip: 'Notifications',
+                onPressed: () => context.push('/notifications'),
+                icon: const Icon(Icons.notifications_none),
+              ),
+            const SizedBox(width: 8),
+            if (_loggedIn)
+              IconButton(
+                tooltip: 'Déconnexion',
+                onPressed: _signOut,
+                icon: const Icon(Icons.logout),
+              ),
+          ],
           const SizedBox(width: 6),
         ],
       ),
@@ -288,9 +342,12 @@ class _HeroSection extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFFF97316), Color(0xFFF59E0B)],
+          colors: [
+            Theme.of(context).colorScheme.primary,
+            Theme.of(context).colorScheme.tertiary,
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -692,6 +749,7 @@ class _CategoryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = _iconForSlug(cat.slug, cat.name);
     final subtitle = _subtitleForSlug(cat.slug, cat.name);
+    final scheme = Theme.of(context).colorScheme;
 
     return Card(
       child: InkWell(
@@ -704,10 +762,10 @@ class _CategoryCard extends StatelessWidget {
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF97316).withAlpha(26),
+                  color: scheme.primary.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: const Color(0xFFF97316)),
+                child: Icon(icon, color: scheme.primary),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -841,6 +899,7 @@ class _BusinessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -888,7 +947,7 @@ class _BusinessCard extends StatelessWidget {
                           const Icon(
                             Icons.star,
                             size: 16,
-                            color: Color(0xFFF59E0B),
+                            color: Colors.amber,
                           ),
                           const SizedBox(width: 4),
                           Text(
@@ -928,10 +987,10 @@ class _BusinessCard extends StatelessWidget {
                             ),
                             if (verified) ...[
                               const SizedBox(width: 6),
-                              const Icon(
+                              Icon(
                                 Icons.verified,
                                 size: 18,
-                                color: Color(0xFFF97316),
+                                color: scheme.primary,
                               ),
                             ],
                           ],
@@ -953,10 +1012,10 @@ class _BusinessCard extends StatelessWidget {
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.phone,
                               size: 16,
-                              color: Color(0xFFF97316),
+                              color: scheme.primary,
                             ),
                             const SizedBox(width: 6),
                             Expanded(
@@ -970,10 +1029,10 @@ class _BusinessCard extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            const Text(
+                            Text(
                               'Voir plus',
                               style: TextStyle(
-                                color: Color(0xFFF97316),
+                                color: scheme.primary,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -1021,6 +1080,7 @@ class _LogoFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty);
     final initials = parts.isEmpty
         ? 'PM'
@@ -1033,15 +1093,15 @@ class _LogoFallback extends StatelessWidget {
       width: 46,
       height: 46,
       decoration: BoxDecoration(
-        color: const Color(0xFFF97316).withAlpha(26),
+        color: scheme.primary.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
       ),
       alignment: Alignment.center,
       child: Text(
         initials,
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.w900,
-          color: Color(0xFFF97316),
+          color: scheme.primary,
         ),
       ),
     );
@@ -1054,9 +1114,10 @@ class _Footer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      color: const Color(0xFF111827),
+      color: scheme.surfaceContainerHighest,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
         child: Center(
@@ -1070,13 +1131,12 @@ class _Footer extends StatelessWidget {
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
                     fontSize: 18,
-                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   "Annuaire et plateforme de promotion des entreprises togolaises.",
-                  style: TextStyle(color: Colors.white.withAlpha(210)),
+                  style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -1089,11 +1149,11 @@ class _Footer extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                Divider(color: Colors.white.withAlpha(40)),
+                Divider(color: scheme.outlineVariant),
                 const SizedBox(height: 10),
                 Text(
                   '© 2026 PME Togo. Tous droits réservés.',
-                  style: TextStyle(color: Colors.white.withAlpha(190)),
+                  style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
               ],
             ),
@@ -1111,12 +1171,13 @@ class _FooterItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18, color: const Color(0xFFF97316)),
+        Icon(icon, size: 18, color: scheme.primary),
         const SizedBox(width: 8),
-        Text(text, style: TextStyle(color: Colors.white.withAlpha(210))),
+        Text(text, style: TextStyle(color: scheme.onSurfaceVariant)),
       ],
     );
   }

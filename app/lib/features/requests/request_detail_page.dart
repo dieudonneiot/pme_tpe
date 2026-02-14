@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'request_status_ui.dart';
 
 class RequestDetailPage extends StatefulWidget {
   final String businessId;
@@ -26,6 +29,7 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
   List<Map<String, dynamic>> _quotes = [];
   List<Map<String, dynamic>> _invoices = [];
   List<Map<String, dynamic>> _paymentIntents = [];
+  List<Map<String, dynamic>> _items = [];
 
   final _msgCtrl = TextEditingController();
 
@@ -67,13 +71,53 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
     try {
       final sb = Supabase.instance.client;
 
-      final r = await sb
-          .from('service_requests')
-          .select('id,business_id,customer_user_id,status,type,address_text,notes,total_estimate,currency,created_at,updated_at')
-          .eq('id', widget.requestId)
-          .single();
+      dynamic r;
+      try {
+        r = await sb
+            .from('service_requests')
+            .select(
+              'id,business_id,customer_user_id,status,type,address_text,notes,total_estimate,currency,'
+              'stock_reserved_at,stock_released_at,created_at,updated_at',
+            )
+            .eq('id', widget.requestId)
+            .single();
+      } on PostgrestException catch (e) {
+        if (e.message.toLowerCase().contains('stock_reserved_at') ||
+            e.message.toLowerCase().contains('stock_released_at')) {
+          r = await sb
+              .from('service_requests')
+              .select(
+                'id,business_id,customer_user_id,status,type,address_text,notes,total_estimate,currency,created_at,updated_at',
+              )
+              .eq('id', widget.requestId)
+              .single();
+        } else {
+          rethrow;
+        }
+      }
 
       _request = Map<String, dynamic>.from(r as Map);
+
+      // Items (try include variant_id)
+      try {
+        final items = await sb
+            .from('service_request_items')
+            .select('id,product_id,variant_id,title_snapshot,qty,unit_price_snapshot,created_at')
+            .eq('request_id', widget.requestId)
+            .order('created_at', ascending: true);
+        _items = (items as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } on PostgrestException catch (e) {
+        if (e.message.toLowerCase().contains('variant_id')) {
+          final items = await sb
+              .from('service_request_items')
+              .select('id,product_id,title_snapshot,qty,unit_price_snapshot,created_at')
+              .eq('request_id', widget.requestId)
+              .order('created_at', ascending: true);
+          _items = (items as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        } else {
+          rethrow;
+        }
+      }
 
       final msgs = await sb
           .from('service_request_messages')
@@ -163,15 +207,30 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
       final user = sb.auth.currentUser;
       if (user == null) throw Exception('Session manquante.');
 
-      await sb.from('service_requests').update({'status': next}).eq('id', widget.requestId);
+      // Preferred: server-side RPC does status+history and stock reservation/release atomically.
+      try {
+        await sb.rpc('set_request_status', params: {
+          'p_request_id': widget.requestId,
+          'p_next': next,
+        });
+      } on PostgrestException catch (e) {
+        // Backward-compatible: RPC may not exist yet.
+        if (e.message.toLowerCase().contains('set_request_status') ||
+            e.message.toLowerCase().contains('function') ||
+            e.code == 'PGRST202') {
+          await sb.from('service_requests').update({'status': next}).eq('id', widget.requestId);
 
-      await sb.from('service_request_status_history').insert({
-        'request_id': widget.requestId,
-        'from_status': current,
-        'to_status': next,
-        'actor_user_id': user.id,
-        'note': null,
-      });
+          await sb.from('service_request_status_history').insert({
+            'request_id': widget.requestId,
+            'from_status': current,
+            'to_status': next,
+            'actor_user_id': user.id,
+            'note': null,
+          });
+        } else {
+          rethrow;
+        }
+      }
 
       await _load();
     } catch (e) {
@@ -386,6 +445,10 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/business/${widget.businessId}/requests'),
+        ),
         title: const Text('Détail demande'),
         actions: [
           IconButton(onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh)),
@@ -408,12 +471,54 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Statut: ${r['status']} • Type: ${r['type']}',
+                                  RequestProgressBar(status: (r['status'] ?? '').toString()),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Statut: ${RequestStatusUi.label((r['status'] ?? '').toString())} • Type: ${(r['type'] ?? '').toString()}',
                                       style: const TextStyle(fontWeight: FontWeight.w700)),
                                   const SizedBox(height: 6),
                                   Text(r['address_text']?.toString() ?? ''),
                                   const SizedBox(height: 6),
                                   Text('Notes: ${r['notes'] ?? ''}'),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    'Total: ${r['total_estimate'] ?? '-'} ${r['currency'] ?? 'XOF'}',
+                                    style: const TextStyle(fontWeight: FontWeight.w700),
+                                  ),
+                                  if (r.containsKey('stock_reserved_at')) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      () {
+                                        final reservedAt = r['stock_reserved_at'];
+                                        final releasedAt = r['stock_released_at'];
+                                        if (reservedAt != null && releasedAt == null) return 'Stock: réservé';
+                                        if (reservedAt != null && releasedAt != null) return 'Stock: relâché';
+                                        return 'Stock: non réservé';
+                                      }(),
+                                      style: const TextStyle(color: Colors.black54),
+                                    ),
+                                  ],
+                                  if (_items.isNotEmpty) ...[
+                                    const SizedBox(height: 12),
+                                    const Text('Articles', style: TextStyle(fontWeight: FontWeight.w800)),
+                                    const SizedBox(height: 6),
+                                    ..._items.map((it) {
+                                      final title = (it['title_snapshot'] ?? '').toString();
+                                      final qty = (it['qty'] as num?)?.toInt() ?? 0;
+                                      final unit = it['unit_price_snapshot'];
+                                      final line = (unit is num) ? (unit * qty) : null;
+                                      final variantId = it['variant_id']?.toString();
+                                      return Card(
+                                        child: ListTile(
+                                          title: Text(title.isEmpty ? (it['product_id'] ?? '').toString() : title),
+                                          subtitle: variantId == null || variantId.isEmpty
+                                              ? null
+                                              : Text('variant: $variantId', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                          trailing: Text(line == null ? 'x$qty' : 'x$qty • $line'),
+                                        ),
+                                      );
+                                    }),
+                                  ],
                                 ],
                               ),
                             ),
@@ -485,14 +590,17 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
                                       decoration: const InputDecoration(labelText: 'Changer statut'),
                                     ),
                                     const SizedBox(height: 12),
-                                    const Text('Historique', style: TextStyle(fontWeight: FontWeight.w700)),
+                                    const Text('Timeline', style: TextStyle(fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 8),
-                                    ..._history.map((h) => Card(
-                                          child: ListTile(
-                                            title: Text('${h['from_status'] ?? '-'} -> ${h['to_status']}'),
-                                            subtitle: Text('by ${h['actor_user_id']}'),
-                                          ),
-                                        )),
+                                    Card(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(12),
+                                        child: RequestTimeline(
+                                          createdAt: DateTime.tryParse(r['created_at']?.toString() ?? '') ?? DateTime.now(),
+                                          history: _history,
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
 

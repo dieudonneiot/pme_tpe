@@ -8,20 +8,30 @@ import 'route_observer.dart';
 import '../features/auth/auth_callback_page.dart';
 import '../features/auth/login_page.dart';
 import '../features/admin/admin_categories_page.dart';
+import '../features/admin/admin_entitlements_page.dart';
 import '../features/business/business_domains_page.dart';
 import '../features/business/business_hours_page.dart';
+import '../features/business/business_billing_page.dart';
 import '../features/business/business_links_page.dart';
+import '../features/business/business_members_page.dart';
 import '../features/business/business_settings_page.dart';
 import '../features/business/create_business_page.dart';
 import '../features/business/public_business_page.dart';
+import '../features/cart/cart_page.dart';
+import '../features/cart/checkout_page.dart';
 import '../features/explore/explore_businesses_page.dart';
 import '../features/home/home_page.dart';
+import '../features/notifications/notifications_page.dart';
 import '../features/posts/business_posts_page.dart';
 import '../features/products/business_products_page.dart';
+import '../features/products/business_inventory_page.dart';
 import '../features/products/product_detail_page.dart';
 import '../features/products/public_product_page.dart';
 import '../features/public/landing_page.dart';
 import '../features/requests/business_requests_page.dart';
+import '../features/requests/customer_payment_status_page.dart';
+import '../features/requests/customer_orders_page.dart';
+import '../features/requests/request_hub_page.dart';
 import '../features/requests/request_detail_page.dart';
 
 final _authRefresh = GoRouterRefreshStream(
@@ -40,26 +50,37 @@ final appRouter = GoRouter(
 
     final isLogin = path == '/login';
     final isCallback = path == '/auth/callback';
+    final isHome = path == '/home';
 
     // Public routes
     final isExplore = path == '/explore';
     final isLanding = path == '/';
     final isPublicBusiness = path.startsWith('/b/');
     final isPublicProduct = path.startsWith('/p/');
+    final isCart = path == '/cart';
 
     if (!loggedIn) {
+      // If the user logs out while on the dashboard, prefer returning to the public home.
+      if (isHome) return '/';
+
       if (isLogin ||
           isCallback ||
           isLanding ||
           isExplore ||
+          isCart ||
           isPublicBusiness ||
           isPublicProduct) {
         return null;
       }
-      return '/login';
+      final next = Uri.encodeComponent(state.uri.toString());
+      return '/login?next=$next';
     }
 
-    if (isLogin || isCallback) return '/home';
+    if (isLogin || isCallback) {
+      final next = state.uri.queryParameters['next']?.trim();
+      if (next != null && next.isNotEmpty && next.startsWith('/')) return next;
+      return '/home';
+    }
     return null;
   },
   routes: [
@@ -84,6 +105,7 @@ final appRouter = GoRouter(
       builder: (_, state) =>
           PublicProductPage(productId: state.pathParameters['id']!),
     ),
+    GoRoute(path: '/cart', builder: (_, _) => const CartPage()),
 
     // AUTH
     GoRoute(path: '/login', builder: (_, _) => const LoginPage()),
@@ -94,7 +116,21 @@ final appRouter = GoRouter(
 
     // APP (protégé)
     GoRoute(path: '/home', builder: (_, _) => const HomePage()),
+    GoRoute(path: '/checkout', builder: (_, _) => const CheckoutPage()),
+    GoRoute(path: '/notifications', builder: (_, _) => const NotificationsPage()),
+    GoRoute(path: '/my/orders', builder: (_, _) => const CustomerOrdersPage()),
+    GoRoute(
+      path: '/requests/:rid',
+      builder: (_, state) =>
+          RequestHubPage(requestId: state.pathParameters['rid']!),
+    ),
+    GoRoute(
+      path: '/requests/:rid/payment',
+      builder: (_, state) =>
+          CustomerPaymentStatusPage(requestId: state.pathParameters['rid']!),
+    ),
     GoRoute(path: '/admin/categories', builder: (_, _) => const AdminCategoriesPage()),
+    GoRoute(path: '/admin/entitlements', builder: (_, _) => const AdminEntitlementsPage()),
     GoRoute(
       path: '/business/create',
       builder: (_, _) => const CreateBusinessPage(),
@@ -104,6 +140,11 @@ final appRouter = GoRouter(
       builder: (_, state) =>
           BusinessSettingsPage(businessId: state.pathParameters['id']!),
       routes: [
+        GoRoute(
+          path: 'billing',
+          builder: (_, state) =>
+              BusinessBillingPage(businessId: state.pathParameters['id']!),
+        ),
         GoRoute(
           path: 'hours',
           builder: (_, state) =>
@@ -136,6 +177,18 @@ final appRouter = GoRouter(
           ),
         ),
       ],
+    ),
+
+    GoRoute(
+      path: '/business/:id/inventory',
+      builder: (_, state) =>
+          BusinessInventoryPage(businessId: state.pathParameters['id']!),
+    ),
+
+    GoRoute(
+      path: '/business/:id/members',
+      builder: (_, state) =>
+          BusinessMembersPage(businessId: state.pathParameters['id']!),
     ),
 
     // Requests
