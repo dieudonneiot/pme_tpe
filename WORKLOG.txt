@@ -310,3 +310,15 @@ Key files
 - `app/lib/features/public/landing_page.dart`
 - `app/lib/core/router.dart`
 - `app/lib/features/explore/explore_businesses_page.dart`
+
+--------------------------------------------------------------------------------
+2026-02-14 - Backfill businesses primary category
+
+Goal
+- Populate `businesses.business_category_id` for existing rows so category filters and landing deep-links are useful.
+
+Implementation
+- Added backfill SQL (mapping-table promotion + keyword fallback) to:
+  - `app/_supabase_sql/README.md`
+- Added a full local script (ignored by Git) for convenience:
+  - `app/_supabase_sql/backfill_business_category_id.sql`
