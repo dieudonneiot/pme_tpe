@@ -245,3 +245,18 @@ Resolution
 
 Notes
 - `_supabase_sql/` is ignored by Git (except README + `.gitkeep`), so these extracted files stay local by design.
+
+--------------------------------------------------------------------------------
+2026-02-14 - Fix: Postgres does not support `ADD CONSTRAINT IF NOT EXISTS`
+
+Problem
+- Running `app/_supabase_sql/business_categories.sql` failed with:
+  - `syntax error at or near "not" ... add constraint if not exists ...`
+
+Cause
+- PostgreSQL supports `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, etc., but **does not** support
+  `ALTER TABLE ... ADD CONSTRAINT IF NOT EXISTS`.
+
+Resolution
+- Replaced the invalid statement with an idempotent `DO $$ ... $$;` block that checks `pg_constraint` before adding
+  the FK constraint, and also fixed a few UTF-8 accent strings in the seed data.

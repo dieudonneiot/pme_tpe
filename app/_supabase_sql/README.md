@@ -23,11 +23,21 @@ create table if not exists public.business_categories (
 alter table public.businesses
   add column if not exists business_category_id uuid null;
 
-alter table public.businesses
-  add constraint if not exists businesses_business_category_fk
-  foreign key (business_category_id)
-  references public.business_categories (id)
-  on delete set null;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'businesses_business_category_fk'
+      and conrelid = 'public.businesses'::regclass
+  ) then
+    alter table public.businesses
+      add constraint businesses_business_category_fk
+      foreign key (business_category_id)
+      references public.business_categories (id)
+      on delete set null;
+  end if;
+end $$;
 
 create index if not exists businesses_business_category_id_idx
   on public.businesses (business_category_id);
