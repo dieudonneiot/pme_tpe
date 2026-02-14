@@ -7,7 +7,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ExploreBusinessesPage extends StatefulWidget {
   final String initialCategoryId;
-  const ExploreBusinessesPage({super.key, this.initialCategoryId = ''});
+  final String initialQuery;
+  final String initialRegion;
+  const ExploreBusinessesPage({
+    super.key,
+    this.initialCategoryId = '',
+    this.initialQuery = '',
+    this.initialRegion = '',
+  });
 
   @override
   State<ExploreBusinessesPage> createState() => _ExploreBusinessesPageState();
@@ -79,6 +86,14 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
     'Tsévié': ['Tsévié', 'Tsevie', 'TsÃ©viÃ©', 'TsÃƒÂ©viÃƒÂ©'],
   };
 
+  static const _regionSlugs = <String, String>{
+    'lome': 'Lomé',
+    'kpalime': 'Kpalimé',
+    'sokode': 'Sokodé',
+    'kara': 'Kara',
+    'tsevie': 'Tsévié',
+  };
+
   static const _categories = <String, List<String>>{
     '': [''],
     'Beauté': ['coiff', 'salon', 'beaute', 'beauté', 'beautÃ©', 'BeautÃ©'],
@@ -105,6 +120,8 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
     super.initState();
     _scroll.addListener(_onScroll);
     _category = widget.initialCategoryId;
+    _search.text = widget.initialQuery.trim();
+    _region = _normalizeRegionFromParam(widget.initialRegion);
     unawaited(_reloadAll());
   }
 
@@ -123,6 +140,27 @@ class _ExploreBusinessesPageState extends State<ExploreBusinessesPage> {
     if (pos.pixels >= (pos.maxScrollExtent * 0.8)) {
       _loadMore();
     }
+  }
+
+  String _normalizeRegionFromParam(String raw) {
+    final v = raw.trim();
+    if (v.isEmpty) return '';
+    final lower = v.toLowerCase();
+
+    final bySlug = _regionSlugs[lower];
+    if (bySlug != null) return bySlug;
+
+    for (final entry in _regions.entries) {
+      final key = entry.key;
+      if (key.isEmpty) continue;
+      if (key.toLowerCase() == lower) return key;
+
+      for (final pat in entry.value) {
+        if (pat.trim().isEmpty) continue;
+        if (pat.toLowerCase() == lower) return key;
+      }
+    }
+    return '';
   }
 
   Future<void> _initDbCategoriesSupport() async {

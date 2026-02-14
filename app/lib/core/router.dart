@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -57,7 +58,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/explore',
       builder: (_, state) => ExploreBusinessesPage(
+        key: ValueKey(state.uri.toString()),
         initialCategoryId: state.uri.queryParameters['category'] ?? '',
+        initialQuery: state.uri.queryParameters['q'] ?? '',
+        initialRegion: state.uri.queryParameters['region'] ?? '',
       ),
     ),
     GoRoute(

@@ -212,7 +212,16 @@ class _LandingPageState extends State<LandingPage> {
               search: _search,
               region: _region,
               onChangedRegion: (v) => setState(() => _region = v),
-              onSearch: _loadBusinesses,
+              onSearch: () {
+                final params = <String, String>{};
+                final q = _search.text.trim();
+                if (q.isNotEmpty) params['q'] = q;
+                final r = _region.trim();
+                if (r.isNotEmpty) params['region'] = r;
+
+                final uri = Uri(path: '/explore', queryParameters: params.isEmpty ? null : params);
+                context.go(uri.toString());
+              },
             ),
             const SizedBox(height: 22),
             _SectionShell(
@@ -452,11 +461,11 @@ class _RegionField extends StatelessWidget {
       ),
       items: const [
         DropdownMenuItem(value: '', child: Text('Tout le Togo')),
-        DropdownMenuItem(value: 'lome', child: Text('Lomé')),
-        DropdownMenuItem(value: 'kpalime', child: Text('Kpalimé')),
-        DropdownMenuItem(value: 'sokode', child: Text('Sokodé')),
-        DropdownMenuItem(value: 'kara', child: Text('Kara')),
-        DropdownMenuItem(value: 'tsevie', child: Text('Tsévié')),
+        DropdownMenuItem(value: 'Lomé', child: Text('Lomé')),
+        DropdownMenuItem(value: 'Kpalimé', child: Text('Kpalimé')),
+        DropdownMenuItem(value: 'Sokodé', child: Text('Sokodé')),
+        DropdownMenuItem(value: 'Kara', child: Text('Kara')),
+        DropdownMenuItem(value: 'Tsévié', child: Text('Tsévié')),
       ],
       onChanged: (v) => onChanged(v ?? ''),
     );

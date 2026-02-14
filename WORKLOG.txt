@@ -322,3 +322,22 @@ Implementation
   - `app/_supabase_sql/README.md`
 - Added a full local script (ignored by Git) for convenience:
   - `app/_supabase_sql/backfill_business_category_id.sql`
+
+--------------------------------------------------------------------------------
+2026-02-14 - Landing hero search → /explore (q + region deep-link)
+
+Goal
+- Make the landing page search behave like a real directory entry point:
+  - When the user searches (and optionally picks a region), open `/explore` with those filters applied.
+
+Implementation
+- `/explore` now supports query params:
+  - `q`: search text
+  - `region`: region label (e.g. `Lomé`)
+  - `category`: category id (already supported)
+- Landing page hero search builds `/explore?q=...&region=...` and navigates there.
+
+Key files
+- `app/lib/features/public/landing_page.dart`
+- `app/lib/core/router.dart`
+- `app/lib/features/explore/explore_businesses_page.dart`
