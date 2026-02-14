@@ -68,3 +68,13 @@ Notes:
 - The app uses `businesses.business_category_id` to filter and show categories on `/explore`, and in the business settings page.
 - If you later want **multiple** categories per business, we can switch to a mapping table (`business_categories_map`) instead of a single FK column.
 
+## Extracted reference (local)
+
+If you keep a long “all-in-one” schema / SQL history file (like `docs/Summary_Of_All_done.txt`), you can extract useful slices into this folder so you don’t have to scroll/search every time.
+
+Local files created from `docs/Summary_Of_All_done.txt`:
+- `app/_supabase_sql/schema_349-882_from_Summary_Of_All_done.txt`
+- `app/_supabase_sql/sql_904-6381_from_Summary_Of_All_done.sql`
+- `app/_supabase_sql/EXTRACTED_FROM_Summary_Of_All_done.md`
+
+Reminder: everything in `_supabase_sql/` is ignored by Git except this README + `.gitkeep`.
