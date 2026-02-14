@@ -582,6 +582,31 @@ Validation
 - `flutter test` OK
 
 --------------------------------------------------------------------------------
+2026-02-14 - Auth: login page doesn’t close after sign-in (email/password + Google)
+
+Problem
+- After a successful sign-in, the app sometimes stayed on `/login` until the user clicked again or tried another action.
+- Root cause: the login UI relied only on GoRouter redirect refresh; no explicit post-auth navigation, and OAuth callback used `push` (stack kept old pages).
+
+Resolution
+- Made login navigation deterministic:
+  - `LoginPage` now listens to `Supabase.auth.onAuthStateChange` and redirects as soon as a session exists.
+  - After email/password and Google sign-in calls, it also triggers redirect immediately.
+  - Supports `next` query param: `/login?next=/checkout` returns to the requested page after login.
+- Polished the login UI (more modern + consistent with the app theme):
+  - Gradient header, improved inputs, show/hide password, better disabled/loading states, nicer error/info banners.
+- Improved OAuth callback navigation:
+  - `AuthCallbackPage` now uses `context.go()` (and respects `next` if provided) instead of `push()`.
+
+Files
+- `app/lib/features/auth/login_page.dart`
+- `app/lib/features/auth/auth_callback_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
 2026-02-14 - Public business page (/b/:slug): pro “Infos” + quick actions
 
 Problem

@@ -42,7 +42,12 @@ class _AuthCallbackPageState extends State<AuthCallbackPage> {
       }
 
       if (!mounted) return;
-      context.push('/home');
+      final next = uri.queryParameters['next']?.trim();
+      if (next != null && next.isNotEmpty && next.startsWith('/')) {
+        context.go(next);
+      } else {
+        context.go('/home');
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     }
