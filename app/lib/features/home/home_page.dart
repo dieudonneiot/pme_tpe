@@ -12,6 +12,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   bool _loading = true;
   String? _error;
+  bool _isAppAdmin = false;
 
   List<Map<String, dynamic>> _businesses = [];
   String? _selectedBusinessId;
@@ -78,6 +79,15 @@ class _HomePageState extends State<HomePage> {
           .single();
 
       _entitlements = Map<String, dynamic>.from(ent as Map);
+
+      try {
+        final v = await sb.rpc('is_app_admin');
+        _isAppAdmin = v == true;
+      } on PostgrestException {
+        _isAppAdmin = false;
+      } catch (_) {
+        _isAppAdmin = false;
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -309,6 +319,15 @@ class _HomePageState extends State<HomePage> {
                                         ),
                                       );
                                     },
+                                  ),
+
+                                  _Tile(
+                                    title: 'Admin · Catégories',
+                                    subtitle: _isAppAdmin
+                                        ? 'Gérer la liste globale'
+                                        : 'Réservé aux admins',
+                                    enabled: _isAppAdmin,
+                                    onTap: () => context.push('/admin/categories'),
                                   ),
                                 ],
                               );

@@ -6,6 +6,7 @@ import 'router_refresh.dart';
 
 import '../features/auth/auth_callback_page.dart';
 import '../features/auth/login_page.dart';
+import '../features/admin/admin_categories_page.dart';
 import '../features/business/business_domains_page.dart';
 import '../features/business/business_hours_page.dart';
 import '../features/business/business_links_page.dart';
@@ -79,6 +80,7 @@ final appRouter = GoRouter(
 
     // APP (protégé)
     GoRoute(path: '/home', builder: (_, _) => const HomePage()),
+    GoRoute(path: '/admin/categories', builder: (_, _) => const AdminCategoriesPage()),
     GoRoute(
       path: '/business/create',
       builder: (_, _) => const CreateBusinessPage(),

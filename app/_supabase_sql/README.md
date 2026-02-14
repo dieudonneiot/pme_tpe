@@ -130,6 +130,44 @@ where b.business_category_id is null;
 
 Tip: a full script (including reports) is available locally at `app/_supabase_sql/backfill_business_category_id.sql` (ignored by Git).
 
+## Admin-only category management
+
+We use `public.categories` as the global category list. Public read is enabled, but **writes are blocked** by default due to RLS (good).
+
+To allow only application admins to create/edit/delete categories, run:
+
+```sql
+create table if not exists public.app_admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+-- Add your admin user(s) manually (run as postgres):
+-- insert into public.app_admins (user_id)
+-- values ('<YOUR_USER_UUID>')
+-- on conflict do nothing;
+
+create or replace function public.is_app_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, auth
+as $$
+  select exists (select 1 from public.app_admins a where a.user_id = auth.uid());
+$$;
+
+drop policy if exists "App admins manage categories" on public.categories;
+create policy "App admins manage categories"
+  on public.categories
+  for all
+  to authenticated
+  using (public.is_app_admin())
+  with check (public.is_app_admin());
+```
+
+Tip: a full local script is available at `app/_supabase_sql/admin_manage_categories.sql` (ignored by Git).
+
 ## Extracted reference (local)
 
 If you keep a long “all-in-one” schema / SQL history file (like `docs/Summary_Of_All_done.txt`), you can extract useful slices into this folder so you don’t have to scroll/search every time.

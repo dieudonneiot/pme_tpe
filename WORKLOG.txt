@@ -341,3 +341,19 @@ Key files
 - `app/lib/features/public/landing_page.dart`
 - `app/lib/core/router.dart`
 - `app/lib/features/explore/explore_businesses_page.dart`
+
+--------------------------------------------------------------------------------
+2026-02-14 - Admin-only category management (global list)
+
+Goal
+- Keep a clean, consistent global category list (`public.categories`) with no duplicates/spam.
+- Allow only app admins to create/edit/delete categories.
+
+Implementation
+- Added SQL snippet to create `public.app_admins`, `public.is_app_admin()` and a RLS policy that allows only app
+  admins to manage `public.categories`:
+  - `app/_supabase_sql/README.md`
+- Added an in-app admin screen to manage categories (CRUD) and a dashboard tile (visible/enabled only for admins):
+  - `app/lib/features/admin/admin_categories_page.dart`
+  - `app/lib/features/home/home_page.dart`
+  - `app/lib/core/router.dart`
