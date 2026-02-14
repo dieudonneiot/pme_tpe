@@ -19,6 +19,53 @@ create table if not exists public.business_categories (
   created_at timestamptz not null default now()
 );
 
+-- If you previously created `business_categories` without an `id` column,
+-- this makes the schema compatible with FK references to (id).
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'business_categories'
+      and column_name = 'id'
+  ) then
+    alter table public.business_categories add column id uuid;
+    update public.business_categories set id = gen_random_uuid() where id is null;
+    alter table public.business_categories alter column id set default gen_random_uuid();
+    alter table public.business_categories alter column id set not null;
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'business_categories'
+      and column_name = 'sort_order'
+  ) then
+    alter table public.business_categories add column sort_order int not null default 0;
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'business_categories'
+      and column_name = 'created_at'
+  ) then
+    alter table public.business_categories add column created_at timestamptz not null default now();
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'business_categories_id_uniq'
+      and conrelid = 'public.business_categories'::regclass
+  ) then
+    alter table public.business_categories add constraint business_categories_id_uniq unique (id);
+  end if;
+end $$;
+
 -- 2) Add FK column on businesses (single "primary" category)
 alter table public.businesses
   add column if not exists business_category_id uuid null;

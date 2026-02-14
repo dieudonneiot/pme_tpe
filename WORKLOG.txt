@@ -260,3 +260,20 @@ Cause
 Resolution
 - Replaced the invalid statement with an idempotent `DO $$ ... $$;` block that checks `pg_constraint` before adding
   the FK constraint, and also fixed a few UTF-8 accent strings in the seed data.
+
+--------------------------------------------------------------------------------
+2026-02-14 - Fix: `business_categories` table existed without `id`
+
+Problem
+- Running the FK step failed with:
+  - `column "id" referenced in foreign key constraint does not exist`
+
+Cause
+- You already had a `public.business_categories` table created earlier, but it didn’t include an `id` column.
+- The app + new schema expects `business_categories.id` to exist so `businesses.business_category_id` can reference it.
+
+Resolution
+- Updated the migration SQL to detect this situation and:
+  - Add `business_categories.id uuid` + backfill values + set default + NOT NULL
+  - Ensure `sort_order` + `created_at` exist
+  - Add a unique constraint on `(id)` so it can be referenced by the FK
