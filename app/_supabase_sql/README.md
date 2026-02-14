@@ -142,6 +142,8 @@ create table if not exists public.app_admins (
   created_at timestamptz not null default now()
 );
 
+alter table public.app_admins enable row level security;
+
 -- Add your admin user(s) manually (run as postgres):
 -- insert into public.app_admins (user_id)
 -- values ('<YOUR_USER_UUID>')
