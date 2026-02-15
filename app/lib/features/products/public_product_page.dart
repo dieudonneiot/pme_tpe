@@ -693,22 +693,70 @@ class _PublicProductPageState extends State<PublicProductPage>
         ),
 
         const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _addToCartAndOpen,
-          icon: const Icon(Icons.shopping_cart_checkout),
-          label: const Text('Commander'),
+        SizedBox(
+          height: 46,
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _addToCartAndOpen,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            icon: const Icon(Icons.shopping_cart_checkout),
+            label: const Text('Commander'),
+          ),
         ),
         const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: () => context.push('/cart'),
-          icon: const Icon(Icons.shopping_cart_outlined),
-          label: const Text('Voir le panier'),
-        ),
+        LayoutBuilder(
+          builder: (context, c) {
+            final wide = c.maxWidth >= 520;
 
-        const SizedBox(height: 12),
-        FilledButton(
-          onPressed: slug.isEmpty ? null : () => context.push('/b/$slug'),
-          child: const Text('Voir la boutique'),
+            final cartBtn = SizedBox(
+              height: 44,
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => context.push('/cart'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                icon: const Icon(Icons.shopping_cart_outlined),
+                label: const Text('Panier'),
+              ),
+            );
+
+            final shopBtn = SizedBox(
+              height: 44,
+              width: double.infinity,
+              child: FilledButton.tonalIcon(
+                onPressed: slug.isEmpty ? null : () => context.push('/b/$slug'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                icon: const Icon(Icons.storefront_outlined),
+                label: const Text('Boutique'),
+              ),
+            );
+
+            if (!wide) {
+              return Column(
+                children: [
+                  cartBtn,
+                  const SizedBox(height: 10),
+                  shopBtn,
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                Expanded(child: cartBtn),
+                const SizedBox(width: 10),
+                Expanded(child: shopBtn),
+              ],
+            );
+          },
         ),
       ],
     );

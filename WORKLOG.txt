@@ -582,6 +582,24 @@ Validation
 - `flutter test` OK
 
 --------------------------------------------------------------------------------
+2026-02-15 - Public product page: compact action buttons (desktop-friendly)
+
+Problem
+- The product page bottom actions (“Commander”, “Voir le panier”, “Voir la boutique”) were too tall/wide and looked non-professional on desktop.
+
+Resolution
+- Made actions more compact and modern:
+  - Reduced button heights and padding.
+  - On wide screens, shows “Panier” + “Boutique” side-by-side instead of stacking full-width buttons.
+
+Files
+- `app/lib/features/products/public_product_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
 2026-02-15 - Public product display: gallery, no blur bars, variant thumbnails
 
 Problem
