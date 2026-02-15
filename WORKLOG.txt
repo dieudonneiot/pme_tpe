@@ -650,6 +650,21 @@ Why this matters
 - Some older DB variants use enums/checks for provider; sending `PAYDUNYA` (uppercase) can crash inserts and surface as “Internal Server Error”.
 
 --------------------------------------------------------------------------------
+2026-02-15 - Fix Edge runtime error: `.eq is not a function`
+
+Problem
+- Edge logs showed: `TypeError: sb.from(...).eq is not a function`
+
+Cause
+- In supabase-js, `.eq()` is available on the filter builder returned after `.select()` (or `.update()`, etc.),
+  not directly on the object returned by `.from()`.
+
+Fix
+- Updated `app/supabase/functions/create_payment_intent/index.ts` to chain:
+  - `.from('service_requests').select(...).eq(...)` (instead of `.from(...).eq(...).select(...)`)
+- Redeployed `create_payment_intent` via CLI.
+
+--------------------------------------------------------------------------------
 2026-02-15 - Edge security: callback secret for PayDunya/Stripe flow
 
 Goal
