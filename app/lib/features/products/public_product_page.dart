@@ -567,7 +567,7 @@ class _PublicProductPageState extends State<PublicProductPage>
           const Text('Variantes', style: TextStyle(fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
           SizedBox(
-            height: 64,
+            height: 72,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: _variants.length + 1,
@@ -581,7 +581,7 @@ class _PublicProductPageState extends State<PublicProductPage>
                     borderRadius: BorderRadius.circular(999),
                     onTap: () => setState(() => _selectedVariantId = null),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                       decoration: BoxDecoration(
                         color: selected ? scheme.primary.withAlpha(18) : scheme.surface,
                         borderRadius: BorderRadius.circular(999),
@@ -616,7 +616,7 @@ class _PublicProductPageState extends State<PublicProductPage>
                   borderRadius: BorderRadius.circular(16),
                   onTap: id.isEmpty ? null : () => setState(() => _selectedVariantId = id),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
                       color: selected ? scheme.primary.withAlpha(18) : scheme.surface,
                       borderRadius: BorderRadius.circular(16),
@@ -651,19 +651,28 @@ class _PublicProductPageState extends State<PublicProductPage>
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 t,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w900),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                  height: 1.0,
+                                ),
                               ),
-                              const SizedBox(height: 2),
                               Text(
                                 subtitle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                                style: TextStyle(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  height: 1.0,
+                                ),
                               ),
                             ],
                           ),
@@ -839,86 +848,180 @@ class _ProductMediaGalleryState extends State<_ProductMediaGallery> {
     final current = items[_index];
     final isVideo = current.type.toLowerCase() == 'video';
     final aspect = isVideo ? (16 / 9) : (4 / 3);
+    final screenH = MediaQuery.sizeOf(context).height;
 
     return LayoutBuilder(
       builder: (context, c) {
-        // Keep media hero compact on large screens (desktop).
-        double maxW = isVideo ? 760 : 560;
-        final maxH = isVideo ? 420.0 : 560.0;
+        double maxH = screenH * 0.55;
+        final hardMaxH = isVideo ? 560.0 : 680.0;
+        if (maxH > hardMaxH) maxH = hardMaxH;
+        if (maxH < 320) maxH = 320;
+
+        final showSideThumbs = items.length > 1 && c.maxWidth >= 900;
+        final thumbExtent = showSideThumbs ? 76.0 : 62.0;
+
+        double maxW = isVideo ? 980 : 920;
         final byH = maxH * aspect;
         if (maxW > byH) maxW = byH;
 
         var w = c.maxWidth;
+        if (showSideThumbs) w = w - thumbExtent - 12;
         if (w > maxW) w = maxW;
+        if (w < 260) w = c.maxWidth;
+
+        Widget hero() {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: AspectRatio(
+              aspectRatio: aspect,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PageView.builder(
+                    controller: _pages,
+                    itemCount: items.length,
+                    onPageChanged: (v) => setState(() => _index = v),
+                    itemBuilder: (_, i) {
+                      final it = items[i];
+                      return _MediaHero(
+                        url: it.url,
+                        type: it.type,
+                        videoSupported: widget.videoSupported,
+                        posterUrl: widget.posterUrl,
+                        active: widget.active,
+                        muted: widget.muted,
+                        onToggleMute: widget.onToggleMute,
+                      );
+                    },
+                  ),
+                  if (items.length > 1) ...[
+                    Positioned(
+                      left: 10,
+                      top: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(120),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '${_index + 1}/${items.length}',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: 8,
+                      bottom: 8,
+                      child: IconButton.filledTonal(
+                        tooltip: 'Précédent',
+                        onPressed: _index == 0 ? null : () => _go(_index - 1),
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: IconButton.filledTonal(
+                        tooltip: 'Suivant',
+                        onPressed: _index >= items.length - 1 ? null : () => _go(_index + 1),
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }
+
+        Widget thumbTile(_GalleryItem it, int i, {required bool vertical}) {
+          final selected = i == _index;
+          final t = it.type.toLowerCase();
+          final isVideoThumb = t == 'video';
+          final size = vertical ? 64.0 : 58.0;
+
+          return InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => _go(i),
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: selected ? scheme.primary : scheme.outlineVariant,
+                  width: selected ? 2 : 1,
+                ),
+                color: scheme.surfaceContainerHighest,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (!isVideoThumb)
+                    Image.network(
+                      it.url,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Center(child: Icon(Icons.broken_image_outlined)),
+                    )
+                  else
+                    Container(
+                      color: Colors.black,
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.play_arrow, color: Colors.white),
+                    ),
+                  if (isVideoThumb)
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Container(
+                        margin: const EdgeInsets.all(6),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withAlpha(140),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.videocam, size: 14, color: Colors.white),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (showSideThumbs) {
+          final heroH = w / aspect;
+          final thumbsH = heroH < 220 ? 220.0 : heroH;
+
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: thumbExtent,
+                height: thumbsH,
+                child: ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (_, i) => thumbTile(items[i], i, vertical: true),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: w),
+                child: hero(),
+              ),
+            ],
+          );
+        }
 
         return Column(
           children: [
             Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: w),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: AspectRatio(
-                    aspectRatio: aspect,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        PageView.builder(
-                          controller: _pages,
-                          itemCount: items.length,
-                          onPageChanged: (v) => setState(() => _index = v),
-                          itemBuilder: (_, i) {
-                            final it = items[i];
-                            return _MediaHero(
-                              url: it.url,
-                              type: it.type,
-                              videoSupported: widget.videoSupported,
-                              posterUrl: widget.posterUrl,
-                              active: widget.active,
-                              muted: widget.muted,
-                              onToggleMute: widget.onToggleMute,
-                            );
-                          },
-                        ),
-                        if (items.length > 1) ...[
-                          Positioned(
-                            left: 10,
-                            top: 10,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withAlpha(120),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: Text(
-                                '${_index + 1}/${items.length}',
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            left: 8,
-                            bottom: 8,
-                            child: IconButton.filledTonal(
-                              tooltip: 'Précédent',
-                              onPressed: _index == 0 ? null : () => _go(_index - 1),
-                              icon: const Icon(Icons.chevron_left),
-                            ),
-                          ),
-                          Positioned(
-                            right: 8,
-                            bottom: 8,
-                            child: IconButton.filledTonal(
-                              tooltip: 'Suivant',
-                              onPressed: _index >= items.length - 1 ? null : () => _go(_index + 1),
-                              icon: const Icon(Icons.chevron_right),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+                child: hero(),
               ),
             ),
             if (items.length > 1) ...[
@@ -930,60 +1033,7 @@ class _ProductMediaGalleryState extends State<_ProductMediaGallery> {
                   itemCount: items.length,
                   padding: const EdgeInsets.symmetric(horizontal: 2),
                   separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (_, i) {
-                    final it = items[i];
-                    final selected = i == _index;
-                    final t = it.type.toLowerCase();
-                    final isVideoThumb = t == 'video';
-
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: () => _go(i),
-                      child: Container(
-                        width: 58,
-                        height: 58,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: selected ? scheme.primary : scheme.outlineVariant,
-                            width: selected ? 2 : 1,
-                          ),
-                          color: scheme.surfaceContainerHighest,
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            if (!isVideoThumb)
-                              Image.network(
-                                it.url,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => const Center(child: Icon(Icons.broken_image_outlined)),
-                              )
-                            else
-                              Container(
-                                color: Colors.black,
-                                alignment: Alignment.center,
-                                child: const Icon(Icons.play_arrow, color: Colors.white),
-                              ),
-                            if (isVideoThumb)
-                              Align(
-                                alignment: Alignment.bottomRight,
-                                child: Container(
-                                  margin: const EdgeInsets.all(6),
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withAlpha(140),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(Icons.videocam, size: 14, color: Colors.white),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+                  itemBuilder: (_, i) => thumbTile(items[i], i, vertical: false),
                 ),
               ),
             ],

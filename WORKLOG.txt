@@ -582,6 +582,27 @@ Validation
 - `flutter test` OK
 
 --------------------------------------------------------------------------------
+2026-02-15 - Public product page: larger gallery on big screens + fix variant overflow
+
+Problem
+- On large screens the media hero looked too small (too much empty space).
+- RenderFlex overflow happened in variant pills (two-line text didn’t fit in the available height).
+
+Resolution
+- Gallery is now responsive:
+  - On wide screens: shows thumbnails in a vertical strip next to a larger hero to make better use of space.
+  - Hero size adapts to screen height (up to sensible caps) while keeping the 4:3 (images) / 16:9 (video) aspect.
+- Fixed variant pill overflow by tightening vertical layout:
+  - Slightly taller strip, reduced paddings, removed extra spacing, and tuned text sizes/line-heights.
+
+Files
+- `app/lib/features/products/public_product_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
 2026-02-15 - Public product page: compact action buttons (desktop-friendly)
 
 Problem
