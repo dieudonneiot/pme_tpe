@@ -38,6 +38,7 @@ export class PayDunya {
     const res = await fetch("https://app.paydunya.com/api/v1/checkout-invoice/create", {
       method: "POST",
       headers: {
+        "Accept": "application/json",
         "Content-Type": "application/json",
         "PAYDUNYA-MASTER-KEY": masterKey,
         "PAYDUNYA-PRIVATE-KEY": apiSecret,
@@ -46,10 +47,20 @@ export class PayDunya {
       body: JSON.stringify(payload),
     });
 
-    const json = await res.json();
+    const text = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`PayDunya non-JSON response (${res.status}): ${text.slice(0, 600)}`);
+    }
 
     if (!res.ok || !json?.response_code || json.response_code !== "00") {
-      throw new Error(`PayDunya error: ${JSON.stringify(json)}`);
+      throw new Error(`PayDunya error (${res.status}): ${JSON.stringify(json).slice(0, 1200)}`);
+    }
+
+    if (!json.response_text || typeof json.response_text !== "string") {
+      throw new Error(`PayDunya missing response_text (${res.status}): ${JSON.stringify(json).slice(0, 1200)}`);
     }
 
     return json.response_text; // URL de paiement

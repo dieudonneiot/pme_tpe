@@ -665,6 +665,24 @@ Fix
 - Redeployed `create_payment_intent` via CLI.
 
 --------------------------------------------------------------------------------
+2026-02-15 - PayDunya: better error diagnostics (non-JSON responses)
+
+Problem
+- Edge logs showed: `Unexpected token '<' ... is not valid JSON`
+
+Cause
+- PayDunya endpoint sometimes returns an HTML error page (starts with `<!DOCTYPE ...>`) instead of JSON
+  (typically due to wrong keys, blocked request, or provider outage). Our code was calling `res.json()` directly.
+
+Fix
+- Updated PayDunya provider code to read `res.text()` first, then:
+  - parse JSON when possible
+  - otherwise throw a clear error including HTTP status + first part of the HTML response
+  - files:
+    - `app/supabase/functions/create_payment_intent/providers/paydunya.ts`
+    - `app/supabase/functions/billing_subscribe/providers/paydunya.ts`
+
+--------------------------------------------------------------------------------
 2026-02-15 - Edge security: callback secret for PayDunya/Stripe flow
 
 Goal
