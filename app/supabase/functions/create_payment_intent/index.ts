@@ -52,18 +52,20 @@ serve(async (req) => {
   if (authErr || !user) return json(401, { error: "Unauthorized" })
 
   const { data: reqRow, error: reqErr } = await (async () => {
-    const base = sb.from("service_requests").eq("id", request_id)
-
     // Prefer the newer column name used by the Flutter app (`total_estimate`).
-    const r1 = await base
+    const r1 = await sb
+      .from("service_requests")
       .select("id, business_id, customer_user_id, total_estimate, currency")
+      .eq("id", request_id)
       .maybeSingle()
 
     if (!r1.error || !isColumnMissingError(r1.error, "total_estimate")) return r1
 
     // Backward-compat (older schema): `total_amount`.
-    return await base
+    return await sb
+      .from("service_requests")
       .select("id, business_id, customer_user_id, total_amount, currency")
+      .eq("id", request_id)
       .maybeSingle()
   })()
 
