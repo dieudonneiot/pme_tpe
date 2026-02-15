@@ -636,7 +636,18 @@ Why you saw “Erreur serveur pendant le paiement…”
 - The error is coming from the Edge Function (status >= 500), typically because:
   - PayDunya env keys are missing/invalid, or PayDunya API rejected the request
   - `PUBLIC_BASE_URL` is not set, producing an invalid callback/return URL
- - The Edge Function wasn’t redeployed yet (still running an older version)
+  - The Edge Function wasn’t redeployed yet (still running an older version)
+
+--------------------------------------------------------------------------------
+2026-02-15 - Payment “Internal Server Error” hardening
+
+Change
+- Normalized provider values to avoid enum/check-constraint issues:
+  - `create_payment_intent` now accepts any case but stores provider as `paydunya` (lowercase).
+  - Checkout now calls provider as `paydunya` (lowercase).
+
+Why this matters
+- Some older DB variants use enums/checks for provider; sending `PAYDUNYA` (uppercase) can crash inserts and surface as “Internal Server Error”.
 
 --------------------------------------------------------------------------------
 2026-02-15 - Edge security: callback secret for PayDunya/Stripe flow

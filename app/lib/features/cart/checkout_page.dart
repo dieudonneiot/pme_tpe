@@ -196,7 +196,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       // 3) Appeler Edge Function paiement (nom = dossier de la function).
       final res = await sb.functions.invoke(
         'create_payment_intent',
-        body: {'request_id': requestId, 'provider': 'PAYDUNYA'},
+        body: {'request_id': requestId, 'provider': 'paydunya'},
       );
 
       final data = res.data;

@@ -34,13 +34,13 @@ serve(async (req) => {
   const body = await req.json().catch(() => null)
   const request_id = body?.request_id
   const amount = body?.amount
-  const provider = body?.provider ?? "PAYDUNYA"
+  const providerRaw = (body?.provider ?? "paydunya").toString().toLowerCase()
 
   if (typeof request_id !== "string" || request_id.length === 0) {
     return json(400, { error: "request_id is required" })
   }
 
-  if (provider !== "PAYDUNYA") {
+  if (providerRaw !== "paydunya") {
     return json(400, { error: "Unsupported provider" })
   }
 
@@ -113,14 +113,17 @@ serve(async (req) => {
       request_id,
       amount: payAmount,
       currency: reqRow.currency ?? "XOF",
-      provider,
+      provider: "paydunya",
       status: "pending",
       created_by: user.id,
     })
     .select()
     .single()
 
-  if (iErr) throw iErr
+  if (iErr) {
+    console.error("create_payment_intent: insert payment_intents failed", iErr)
+    return json(500, { error: "Internal Server Error" })
+  }
 
   if (!publicBaseUrl) {
     await sb.from("payment_intents")
