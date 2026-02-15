@@ -2,37 +2,117 @@ import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import { PayDunya } from "./providers/paydunya.ts"
 
+function json(
+  status: number,
+  body: Record<string, unknown>,
+  extraHeaders: Record<string, string> = {},
+) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...extraHeaders,
+    },
+  })
+}
+
+function isColumnMissingError(err: unknown, columnName: string): boolean {
+  const msg = (err as { message?: unknown })?.message
+  if (typeof msg !== "string") return false
+  return msg.toLowerCase().includes(`column "${columnName.toLowerCase()}" does not exist`)
+}
+
 serve(async (req) => {
   const sb = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   )
 
-  const { request_id, amount, provider } = await req.json()
-  const auth = req.headers.get("Authorization")?.replace("Bearer ", "")
-  const { data: user, error: authErr } = await sb.auth.getUser(auth)
-  if (authErr || !user) return new Response("Unauthorized", { status: 401 })
+  const body = await req.json().catch(() => null)
+  const request_id = body?.request_id
+  const amount = body?.amount
+  const provider = body?.provider ?? "PAYDUNYA"
 
-  const { data: reqRow, error: reqErr } = await sb
-    .from("service_requests")
-    .select("id, business_id, total_amount, currency")
-    .eq("id", request_id)
-    .maybeSingle()
+  if (typeof request_id !== "string" || request_id.length === 0) {
+    return json(400, { error: "request_id is required" })
+  }
 
-  if (reqErr || !reqRow)
-    return new Response("Invalid request", { status: 400 })
+  if (provider !== "PAYDUNYA") {
+    return json(400, { error: "Unsupported provider" })
+  }
 
-  const payAmount = amount ?? reqRow.total_amount
+  const authHeader = req.headers.get("Authorization") ?? ""
+  const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : ""
+  if (!jwt) return json(401, { error: "Unauthorized" })
+
+  const { data: { user }, error: authErr } = await sb.auth.getUser(jwt)
+  if (authErr || !user) return json(401, { error: "Unauthorized" })
+
+  const { data: reqRow, error: reqErr } = await (async () => {
+    const base = sb.from("service_requests").eq("id", request_id)
+
+    // Prefer the newer column name used by the Flutter app (`total_estimate`).
+    const r1 = await base
+      .select("id, business_id, customer_user_id, total_estimate, currency")
+      .maybeSingle()
+
+    if (!r1.error || !isColumnMissingError(r1.error, "total_estimate")) return r1
+
+    // Backward-compat (older schema): `total_amount`.
+    return await base
+      .select("id, business_id, customer_user_id, total_amount, currency")
+      .maybeSingle()
+  })()
+
+  if (reqErr || !reqRow) {
+    return json(400, { error: "Invalid request" })
+  }
+
+  const isCustomer = reqRow.customer_user_id === user.id
+
+  let isStaff = false
+  if (!isCustomer) {
+    const { data: member, error: mErr } = await sb
+      .from("business_members")
+      .select("role")
+      .eq("business_id", reqRow.business_id)
+      .eq("user_id", user.id)
+      .maybeSingle()
+
+    if (!mErr && member) {
+      isStaff = ["owner", "admin", "staff"].includes((member as { role?: string }).role ?? "")
+    }
+
+    if (!isStaff) {
+      return json(403, { error: "Forbidden" })
+    }
+  }
+
+  const reqAmount =
+    (reqRow as { total_estimate?: number; total_amount?: number }).total_estimate ??
+    (reqRow as { total_amount?: number }).total_amount
+
+  let payAmount = reqAmount
+  if (isStaff && typeof amount === "number") {
+    payAmount = amount
+  } else if (amount != null && typeof amount !== "number") {
+    return json(400, { error: "amount must be a number" })
+  }
+
+  if (typeof payAmount !== "number" || !Number.isFinite(payAmount) || payAmount <= 0) {
+    return json(400, { error: "Invalid amount" })
+  }
 
   const { data: intent, error: iErr } = await sb
     .from("payment_intents")
     .insert({
       business_id: reqRow.business_id,
+      request_id,
       amount: payAmount,
       currency: reqRow.currency ?? "XOF",
       provider,
       status: "pending",
-      created_by: user.user.id,
+      created_by: user.id,
     })
     .select()
     .single()
@@ -47,11 +127,16 @@ serve(async (req) => {
     callbackUrl,
   })
 
-  await sb.from("payment_intents")
+  const { error: updErr } = await sb.from("payment_intents")
     .update({ external_ref: paymentUrl, status: "initiated" })
     .eq("id", intent.id)
 
-  return new Response(JSON.stringify({ payment_url: paymentUrl }), {
-    headers: { "Content-Type": "application/json" },
-  })
+  // Backward-compat: if `initiated` is not part of the enum, keep `pending`.
+  if (updErr) {
+    await sb.from("payment_intents")
+      .update({ external_ref: paymentUrl })
+      .eq("id", intent.id)
+  }
+
+  return json(200, { payment_url: paymentUrl })
 })

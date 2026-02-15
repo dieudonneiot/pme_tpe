@@ -582,6 +582,44 @@ Validation
 - `flutter test` OK
 
 --------------------------------------------------------------------------------
+2026-02-15 - Checkout/payment fix + Supabase security advisor hardening
+
+Problem
+- Checkout page showed a bottom error like:
+  - `FunctionException(status: 400, details: Invalid request, ...)`
+- Root cause: Edge Function `create_payment_intent` queried `service_requests.total_amount`, but the app writes `service_requests.total_estimate`.
+  - The function also didn’t attach `request_id` to `payment_intents`, which breaks pages that load intents by request.
+- Supabase Advisor flagged several security issues (view security definer, PostGIS in public, mutable function search_path, etc.).
+
+Fix (Edge Functions)
+- Updated `app/supabase/functions/create_payment_intent/index.ts`
+  - Reads `total_estimate` first, falls back to `total_amount` for backward-compat.
+  - Validates auth token properly and enforces authorization:
+    - allowed if caller is the request customer OR a business member (owner/admin/staff).
+  - Inserts `payment_intents.request_id` so status pages can query intents by request.
+  - Makes the `initiated` status update best-effort (keeps `pending` if enum doesn’t support it).
+  - Returns JSON errors (`{ error: ... }`) to support nicer UX messages in the app.
+
+Fix (App UX)
+- Updated `app/lib/features/cart/checkout_page.dart`
+  - Replaced raw error SnackBars with an inline, dismissible error card (more professional + readable).
+  - Redesigned layout:
+    - “Récapitulatif” card (items + total) + “Tes infos” card (customer form)
+    - Responsive: side-by-side on wide screens, stacked on narrow screens
+  - Kept only the useful SnackBar (“Redirection vers paiement...”).
+
+Supabase Security (Advisor)
+- Added `app/_supabase_sql/security_advisor_hardening.sql` (run manually in Supabase SQL Editor)
+  - Attempts to convert `public.inventory_on_hand` to invoker rights (`security_invoker=true`).
+  - Moves PostGIS extensions out of `public` into `extensions` schema when possible.
+  - If `public.spatial_ref_sys` still exists, enables RLS + read-only select policy.
+  - Sets a fixed `search_path` for security-sensitive functions to remove “mutable search_path” warnings.
+  - Adds minimal RLS policies for tables that had RLS enabled but no policies (`app_admins`, `audit_logs`, `notification_deliveries`).
+
+Notes
+- “Leaked password protection disabled” must be enabled in Supabase Dashboard (Auth settings), not via SQL.
+
+--------------------------------------------------------------------------------
 2026-02-15 - Public product page: larger gallery on big screens + fix variant overflow
 
 Problem
