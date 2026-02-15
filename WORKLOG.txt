@@ -620,6 +620,25 @@ Notes
 - “Leaked password protection disabled” must be enabled in Supabase Dashboard (Auth settings), not via SQL.
 
 --------------------------------------------------------------------------------
+2026-02-15 - Checkout: location picker (map) + better payment provider errors
+
+Changes
+- Added an in-app map picker for delivery location:
+  - `app/lib/core/widgets/location_picker_page.dart` (OpenStreetMap via `flutter_map`)
+  - Checkout can now store `service_requests.location` as WKT (`SRID=4326;POINT(lon lat)`).
+  - Address validation accepts either an address text OR a picked map position.
+- Updated checkout error styling to match the page (less “hard red”, more consistent surface + red accent).
+- Edge Function `create_payment_intent` now:
+  - Fails fast if `PUBLIC_BASE_URL` is missing.
+  - Catches PayDunya errors, marks the `payment_intents` row as failed, and returns a safe user message.
+
+Why you saw “Erreur serveur pendant le paiement…”
+- The error is coming from the Edge Function (status >= 500), typically because:
+  - PayDunya env keys are missing/invalid, or PayDunya API rejected the request
+  - `PUBLIC_BASE_URL` is not set, producing an invalid callback/return URL
+  - The Edge Function wasn’t redeployed yet (still running an older version)
+
+--------------------------------------------------------------------------------
 2026-02-15 - Public product page: larger gallery on big screens + fix variant overflow
 
 Problem

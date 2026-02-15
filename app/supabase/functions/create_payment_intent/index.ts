@@ -28,6 +28,8 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   )
 
+  const publicBaseUrl = Deno.env.get("PUBLIC_BASE_URL") ?? ""
+
   const body = await req.json().catch(() => null)
   const request_id = body?.request_id
   const amount = body?.amount
@@ -119,13 +121,35 @@ serve(async (req) => {
 
   if (iErr) throw iErr
 
-  const callbackUrl = `${Deno.env.get("PUBLIC_BASE_URL")}/payments_callback`
-  const paymentUrl = await PayDunya.createCheckout({
-    amount: payAmount,
-    description: "Commande PME_TPE",
-    reference: intent.id,
-    callbackUrl,
-  })
+  if (!publicBaseUrl) {
+    await sb.from("payment_intents")
+      .update({ status: "failed", metadata: { error: "PUBLIC_BASE_URL missing" } })
+      .eq("id", intent.id)
+
+    return json(500, { error: "Payment provider not configured" })
+  }
+
+  const callbackUrl = `${publicBaseUrl}/payments_callback`
+
+  let paymentUrl: string
+  try {
+    paymentUrl = await PayDunya.createCheckout({
+      amount: payAmount,
+      description: "Commande PME_TPE",
+      reference: intent.id,
+      callbackUrl,
+    })
+  } catch (e) {
+    const msg = (e as { message?: unknown })?.message
+    const safeMsg = typeof msg === "string" ? msg : "PayDunya error"
+    console.error("create_payment_intent: paydunya failure", safeMsg)
+
+    await sb.from("payment_intents")
+      .update({ status: "failed", metadata: { error: safeMsg } })
+      .eq("id", intent.id)
+
+    return json(502, { error: "Paiement indisponible. Réessaie dans un instant." })
+  }
 
   const { error: updErr } = await sb.from("payment_intents")
     .update({ external_ref: paymentUrl, status: "initiated" })

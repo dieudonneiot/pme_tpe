@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/widgets/app_back_button.dart';
+import '../../core/widgets/location_picker_page.dart';
 import 'cart_scope.dart';
 
 class CheckoutPage extends StatefulWidget {
@@ -11,6 +12,38 @@ class CheckoutPage extends StatefulWidget {
 
   @override
   State<CheckoutPage> createState() => _CheckoutPageState();
+}
+
+class _LocationChip extends StatelessWidget {
+  final PickedLocation location;
+  const _LocationChip({required this.location});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.my_location, size: 16, color: scheme.primary),
+          const SizedBox(width: 6),
+          Text(
+            '${location.lat.toStringAsFixed(5)}, ${location.lng.toStringAsFixed(5)}',
+            style: TextStyle(
+              color: scheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _CheckoutPageState extends State<CheckoutPage> {
@@ -23,6 +56,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
 
   bool _loading = false;
   String? _errorText;
+  PickedLocation? _pickedLocation;
 
   @override
   void dispose() {
@@ -61,9 +95,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
           : "Paiement indisponible. Réessaie.";
     }
     if (status >= 500) {
+      if (msg?.isNotEmpty == true) return msg!;
       return "Erreur serveur pendant le paiement. Réessaie dans un instant.";
     }
     return msg?.isNotEmpty == true ? msg! : "Erreur de paiement. Réessaie.";
+  }
+
+  Future<void> _pickOnMap() async {
+    final res = await Navigator.of(context).push<PickedLocation?>(
+      MaterialPageRoute(
+        builder: (_) => LocationPickerPage(initial: _pickedLocation),
+      ),
+    );
+    if (res == null) return;
+    setState(() => _pickedLocation = res);
   }
 
   Future<void> _pay() async {
@@ -97,6 +142,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       final total = cart.subtotal;
 
       // 1) Créer service_request.
+      final loc = _pickedLocation;
       final reqRow = await sb
           .from('service_requests')
           .insert({
@@ -107,6 +153,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             'total_estimate': total,
             'currency': cart.currency,
             'address_text': _addressCtrl.text.trim(),
+            if (loc != null) 'location': loc.toWktSrid4326(),
             'notes':
                 'Commande depuis mini-site • Nom=${_nameCtrl.text.trim()} • Tel=${_phoneCtrl.text.trim()}',
           })
@@ -354,8 +401,37 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ),
               maxLines: 2,
               textInputAction: TextInputAction.done,
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Adresse requise' : null,
+              validator: (v) {
+                final hasText = v != null && v.trim().isNotEmpty;
+                final hasPoint = _pickedLocation != null;
+                if (hasText || hasPoint) return null;
+                return 'Adresse ou position requise';
+              },
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _pickOnMap,
+                  icon: const Icon(Icons.map_outlined),
+                  label: Text(
+                    _pickedLocation == null
+                        ? 'Choisir sur la carte'
+                        : 'Modifier la position',
+                  ),
+                ),
+                if (_pickedLocation != null)
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() => _pickedLocation = null),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Retirer'),
+                  ),
+                if (_pickedLocation != null)
+                  _LocationChip(location: _pickedLocation!),
+              ],
             ),
           ],
         ),
@@ -368,20 +444,20 @@ class _CheckoutPageState extends State<CheckoutPage> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: scheme.errorContainer,
+        color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: scheme.error.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline, color: scheme.onErrorContainer),
+          Icon(Icons.error_outline, color: scheme.error),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               message,
               style: TextStyle(
-                color: scheme.onErrorContainer,
+                color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -389,7 +465,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
           IconButton(
             tooltip: 'Fermer',
             onPressed: () => _setError(null),
-            icon: Icon(Icons.close, color: scheme.onErrorContainer),
+            icon: Icon(Icons.close, color: scheme.onSurfaceVariant),
           ),
         ],
       ),

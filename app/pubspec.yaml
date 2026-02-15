@@ -43,6 +43,8 @@ dependencies:
   package_info_plus: any
   url_launcher: any
   video_player: any
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
 
 
   # The following adds the Cupertino Icons font to your application.
