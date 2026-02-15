@@ -699,6 +699,27 @@ Fix
   - force integer `total_amount` (safer for XOF flows)
 
 --------------------------------------------------------------------------------
+2026-02-15 - App branding (Windows): name + icon
+
+Goal
+- Replace the default window title/icon ("flutter_application_1") with app branding.
+
+Changes (Windows)
+- Window title now shows "PME TPE":
+  - `app/windows/runner/main.cpp`
+- App executable renamed (on-disk) to `pme_tpe.exe`:
+  - `app/windows/CMakeLists.txt` (`project(...)` + `BINARY_NAME`)
+- Version info metadata updated (description/product/original filename):
+  - `app/windows/runner/Runner.rc`
+- New default icon generated:
+  - `app/windows/runner/resources/app_icon.ico`
+  - PNG preview: `app/windows/runner/resources/app_icon.png`
+
+Notes
+- If you have a real logo, replace `app/windows/runner/resources/app_icon.ico` with your own ICO (keep filename),
+  then rebuild Windows.
+
+--------------------------------------------------------------------------------
 2026-02-15 - Edge security: callback secret for PayDunya/Stripe flow
 
 Goal
