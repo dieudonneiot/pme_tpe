@@ -582,6 +582,33 @@ Validation
 - `flutter test` OK
 
 --------------------------------------------------------------------------------
+2026-02-15 - Public product display: gallery, no blur bars, variant thumbnails
+
+Problem
+- On the public product page (`/p/:id`), product images were shown with a blurred background (top/bottom “flou”), making photos look like videos.
+- Even when multiple photos were uploaded, the UI behaved like there was only one “hero” image (no gallery/thumbnails).
+- Variant selection was a dropdown and didn’t surface variant cover images.
+
+Resolution
+- Reworked the public product media into a real gallery:
+  - Swipeable `PageView` hero + thumbnail strip + 1/N indicator + prev/next buttons.
+  - Removes all blur/BackdropFilter: images/videos are displayed cleanly with `BoxFit.contain` and solid backgrounds.
+  - When selecting a variant, the gallery automatically starts on the variant cover image if `options.cover_media_id` is set.
+- Improved variant selector:
+  - Replaced dropdown with horizontal “variant pills” including thumbnail (when available) + price.
+  - Added a “Standard” option (base product).
+- Improved product grid on the public business page:
+  - Product cards show a small badge with media count when multiple media are attached.
+
+Files
+- `app/lib/features/products/public_product_page.dart`
+- `app/lib/features/business/public_business_page.dart`
+
+Validation
+- `flutter analyze` OK
+- `flutter test` OK
+
+--------------------------------------------------------------------------------
 2026-02-14 - Auth: login page doesn’t close after sign-in (email/password + Google)
 
 Problem

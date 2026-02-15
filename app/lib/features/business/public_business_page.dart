@@ -605,9 +605,13 @@ class _ProductsTab extends StatelessWidget {
                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       ),
                       clipBehavior: Clip.antiAlias,
-                      child: thumb == null
-                          ? const Center(child: Icon(Icons.inventory_2_outlined, size: 28))
-                          : Image.network(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (thumb == null)
+                            const Center(child: Icon(Icons.inventory_2_outlined, size: 28))
+                          else
+                            Image.network(
                               thumb,
                               fit: BoxFit.cover,
                               errorBuilder: (_, _, _) => Container(
@@ -616,6 +620,38 @@ class _ProductsTab extends StatelessWidget {
                                 child: const Icon(Icons.broken_image_outlined),
                               ),
                             ),
+                          if (media.length > 1)
+                            Positioned(
+                              right: 8,
+                              top: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withAlpha(140),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.photo_library_outlined,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${media.length}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),

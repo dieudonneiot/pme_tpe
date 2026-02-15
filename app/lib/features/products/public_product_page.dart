@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -229,7 +227,24 @@ class _PublicProductPageState extends State<PublicProductPage>
   }
 
   // Used for cart thumb: use primary hero media (prefer image)
-  String? _mediaUrlForCart() => _primaryMedia(allowVideo: false).url;
+  String? _mediaUrlForCart() {
+    final variant = _selectedVariant;
+    if (variant != null) {
+      final coverId = _variantCoverMediaId(variant);
+      if (coverId.isNotEmpty) {
+        for (final m in _mediaList()) {
+          if (m['id']?.toString() != coverId) continue;
+          final t = (m['media_type'] ?? '').toString().toLowerCase();
+          if (t != 'image') continue;
+          final path = (m['storage_path'] ?? '').toString();
+          if (path.isEmpty) break;
+          return _sb.storage.from(_productMediaBucket).getPublicUrl(path);
+        }
+      }
+    }
+
+    return _primaryMedia(allowVideo: false).url;
+  }
 
   String? _posterUrl() {
     for (final m in _mediaList()) {
@@ -240,6 +255,61 @@ class _PublicProductPageState extends State<PublicProductPage>
       return _sb.storage.from(_productMediaBucket).getPublicUrl(path);
     }
     return null;
+  }
+
+  String _variantCoverMediaId(Map<String, dynamic> variant) {
+    final opt = variant['options'];
+    if (opt is Map) {
+      final raw = (opt['cover_media_id'] ?? '').toString().trim();
+      return raw;
+    }
+    return '';
+  }
+
+  List<_GalleryItem> _galleryItems({required bool allowVideo}) {
+    final rows = _mediaList();
+    final out = <_GalleryItem>[];
+    for (final m in rows) {
+      final id = (m['id'] ?? '').toString();
+      if (id.isEmpty) continue;
+
+      final type = (m['media_type'] ?? '').toString().toLowerCase();
+      if (!allowVideo && type == 'video') continue;
+
+      final path = (m['storage_path'] ?? '').toString();
+      if (path.isEmpty) continue;
+
+      out.add(
+        _GalleryItem(
+          id: id,
+          type: type.isEmpty ? 'image' : type,
+          url: _sb.storage.from(_productMediaBucket).getPublicUrl(path),
+        ),
+      );
+    }
+    return out;
+  }
+
+  String? _resolveInitialMediaId(
+    List<_GalleryItem> items, {
+    String? preferredMediaId,
+  }) {
+    if (items.isEmpty) return null;
+
+    final byId = <String, _GalleryItem>{for (final i in items) i.id: i};
+
+    final preferred = (preferredMediaId ?? '').trim();
+    if (preferred.isNotEmpty && byId.containsKey(preferred)) return preferred;
+
+    final primaryId = _product?['primary_media_id']?.toString().trim();
+    if (primaryId != null && primaryId.isNotEmpty && byId.containsKey(primaryId)) {
+      return primaryId;
+    }
+
+    for (final i in items) {
+      if (i.type == 'image') return i.id;
+    }
+    return items.first.id;
   }
 
   // ---------------- CART ----------------
@@ -449,15 +519,20 @@ class _PublicProductPageState extends State<PublicProductPage>
     }
     final slug = (bizMap?['slug'] ?? '').toString();
 
-    final media = _primaryMedia(allowVideo: _videoSupported);
-    final mediaUrl = media.url;
-    final mediaType = (media.type ?? '').toLowerCase();
+    final items = _galleryItems(allowVideo: _videoSupported);
+    final imageUrlById = <String, String>{
+      for (final it in items)
+        if (it.type.toLowerCase() == 'image') it.id: it.url,
+    };
     final posterUrl = _posterUrl();
 
     num? basePrice = p['price_amount'] as num?;
     String baseCur = (p['currency'] ?? 'XOF').toString();
 
     final variant = _selectedVariant;
+    final coverMediaId = (variant == null) ? '' : _variantCoverMediaId(variant);
+
+    final initialMediaId = _resolveInitialMediaId(items, preferredMediaId: coverMediaId);
     if (variant != null && variant['price_amount'] is num) {
       basePrice = variant['price_amount'] as num;
       baseCur = (variant['currency'] ?? baseCur).toString();
@@ -468,42 +543,16 @@ class _PublicProductPageState extends State<PublicProductPage>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (mediaUrl != null)
-          LayoutBuilder(
-            builder: (context, c) {
-              final isVideo = mediaType == 'video';
-              final aspect = isVideo ? (16 / 9) : 1.0;
-
-              // Keep media hero compact on large screens (desktop).
-              double maxW = isVideo ? 720 : 520;
-              final maxH = isVideo ? 360.0 : 520.0;
-              final byH = maxH * aspect;
-              if (maxW > byH) maxW = byH;
-
-              var w = c.maxWidth;
-              if (w > maxW) w = maxW;
-
-              return Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: w),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: AspectRatio(
-                      aspectRatio: aspect,
-                      child: _MediaHero(
-                        url: mediaUrl,
-                        type: mediaType,
-                        videoSupported: _videoSupported,
-                        posterUrl: posterUrl,
-                        active: _pageActive,
-                        muted: _muted,
-                        onToggleMute: () => setState(() => _muted = !_muted),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
+        if (items.isNotEmpty && initialMediaId != null)
+          _ProductMediaGallery(
+            key: ValueKey('${widget.productId}|${_selectedVariantId ?? ''}|$initialMediaId'),
+            items: items,
+            initialMediaId: initialMediaId,
+            videoSupported: _videoSupported,
+            posterUrl: posterUrl,
+            active: _pageActive,
+            muted: _muted,
+            onToggleMute: () => setState(() => _muted = !_muted),
           ),
         const SizedBox(height: 14),
         Text(title,
@@ -515,24 +564,116 @@ class _PublicProductPageState extends State<PublicProductPage>
         const SizedBox(height: 14),
 
         if (_variants.isNotEmpty) ...[
-          const Text('Variante', style: TextStyle(fontWeight: FontWeight.w800)),
+          const Text('Variantes', style: TextStyle(fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedVariantId,
-            decoration: const InputDecoration(labelText: 'Choisir une variante'),
-            items: _variants.map((v) {
-              final id = v['id']?.toString() ?? '';
-              final t = (v['title'] ?? 'Variante').toString();
-              final pr = v['price_amount'];
-              final cur = (v['currency'] ?? baseCur).toString();
-              final subtitle = (pr is num) ? ' — $pr $cur' : '';
-              return DropdownMenuItem(
-                value: id,
-                child: Text('$t$subtitle',
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-              );
-            }).toList(),
-            onChanged: (val) => setState(() => _selectedVariantId = val),
+          SizedBox(
+            height: 64,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _variants.length + 1,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (_, i) {
+                final scheme = Theme.of(context).colorScheme;
+
+                if (i == 0) {
+                  final selected = _selectedVariantId == null;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => setState(() => _selectedVariantId = null),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected ? scheme.primary.withAlpha(18) : scheme.surface,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: selected ? scheme.primary : scheme.outlineVariant,
+                          width: selected ? 2 : 1,
+                        ),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'Standard',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                final v = _variants[i - 1];
+                final id = v['id']?.toString() ?? '';
+                final t = (v['title'] ?? 'Variante').toString();
+                final pr = v['price_amount'];
+                final cur = (v['currency'] ?? baseCur).toString();
+                final subtitle = (pr is num) ? '$pr $cur' : '—';
+
+                final coverId = _variantCoverMediaId(v);
+                final coverUrl = coverId.isEmpty ? null : imageUrlById[coverId];
+
+                final selected = _selectedVariantId == id;
+
+                return InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: id.isEmpty ? null : () => setState(() => _selectedVariantId = id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: selected ? scheme.primary.withAlpha(18) : scheme.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: selected ? scheme.primary : scheme.outlineVariant,
+                        width: selected ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: scheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: coverUrl == null
+                              ? Icon(Icons.image_outlined, color: scheme.onSurfaceVariant)
+                              : Image.network(
+                                  coverUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) =>
+                                      Icon(Icons.broken_image_outlined, color: scheme.onSurfaceVariant),
+                                ),
+                        ),
+                        const SizedBox(width: 10),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 170),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                t,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
           const SizedBox(height: 10),
         ],
@@ -574,6 +715,237 @@ class _PublicProductPageState extends State<PublicProductPage>
   }
 }
 
+class _GalleryItem {
+  final String id;
+  final String type; // image | video
+  final String url;
+
+  const _GalleryItem({
+    required this.id,
+    required this.type,
+    required this.url,
+  });
+}
+
+class _ProductMediaGallery extends StatefulWidget {
+  final List<_GalleryItem> items;
+  final String initialMediaId;
+  final bool videoSupported;
+  final String? posterUrl;
+  final bool active;
+  final bool muted;
+  final VoidCallback onToggleMute;
+
+  const _ProductMediaGallery({
+    super.key,
+    required this.items,
+    required this.initialMediaId,
+    required this.videoSupported,
+    required this.posterUrl,
+    required this.active,
+    required this.muted,
+    required this.onToggleMute,
+  });
+
+  @override
+  State<_ProductMediaGallery> createState() => _ProductMediaGalleryState();
+}
+
+class _ProductMediaGalleryState extends State<_ProductMediaGallery> {
+  late final PageController _pages;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = _initialIndex();
+    _pages = PageController(initialPage: _index);
+  }
+
+  int _initialIndex() {
+    final idx = widget.items.indexWhere((i) => i.id == widget.initialMediaId);
+    return idx < 0 ? 0 : idx;
+  }
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  void _go(int next) {
+    if (next < 0 || next >= widget.items.length) return;
+    _pages.animateToPage(
+      next,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final items = widget.items;
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    final current = items[_index];
+    final isVideo = current.type.toLowerCase() == 'video';
+    final aspect = isVideo ? (16 / 9) : (4 / 3);
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        // Keep media hero compact on large screens (desktop).
+        double maxW = isVideo ? 760 : 560;
+        final maxH = isVideo ? 420.0 : 560.0;
+        final byH = maxH * aspect;
+        if (maxW > byH) maxW = byH;
+
+        var w = c.maxWidth;
+        if (w > maxW) w = maxW;
+
+        return Column(
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: w),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: AspectRatio(
+                    aspectRatio: aspect,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        PageView.builder(
+                          controller: _pages,
+                          itemCount: items.length,
+                          onPageChanged: (v) => setState(() => _index = v),
+                          itemBuilder: (_, i) {
+                            final it = items[i];
+                            return _MediaHero(
+                              url: it.url,
+                              type: it.type,
+                              videoSupported: widget.videoSupported,
+                              posterUrl: widget.posterUrl,
+                              active: widget.active,
+                              muted: widget.muted,
+                              onToggleMute: widget.onToggleMute,
+                            );
+                          },
+                        ),
+                        if (items.length > 1) ...[
+                          Positioned(
+                            left: 10,
+                            top: 10,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withAlpha(120),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${_index + 1}/${items.length}',
+                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 8,
+                            bottom: 8,
+                            child: IconButton.filledTonal(
+                              tooltip: 'Précédent',
+                              onPressed: _index == 0 ? null : () => _go(_index - 1),
+                              icon: const Icon(Icons.chevron_left),
+                            ),
+                          ),
+                          Positioned(
+                            right: 8,
+                            bottom: 8,
+                            child: IconButton.filledTonal(
+                              tooltip: 'Suivant',
+                              onPressed: _index >= items.length - 1 ? null : () => _go(_index + 1),
+                              icon: const Icon(Icons.chevron_right),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (items.length > 1) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 58,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: items.length,
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  separatorBuilder: (_, _) => const SizedBox(width: 10),
+                  itemBuilder: (_, i) {
+                    final it = items[i];
+                    final selected = i == _index;
+                    final t = it.type.toLowerCase();
+                    final isVideoThumb = t == 'video';
+
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => _go(i),
+                      child: Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: selected ? scheme.primary : scheme.outlineVariant,
+                            width: selected ? 2 : 1,
+                          ),
+                          color: scheme.surfaceContainerHighest,
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (!isVideoThumb)
+                              Image.network(
+                                it.url,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => const Center(child: Icon(Icons.broken_image_outlined)),
+                              )
+                            else
+                              Container(
+                                color: Colors.black,
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.play_arrow, color: Colors.white),
+                              ),
+                            if (isVideoThumb)
+                              Align(
+                                alignment: Alignment.bottomRight,
+                                child: Container(
+                                  margin: const EdgeInsets.all(6),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withAlpha(140),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(Icons.videocam, size: 14, color: Colors.white),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _MediaHero extends StatelessWidget {
   final String url;
   final String type; // image | video
@@ -596,6 +968,7 @@ class _MediaHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = type.toLowerCase();
+    final scheme = Theme.of(context).colorScheme;
 
     if (t == 'video') {
       if (!videoSupported) {
@@ -604,11 +977,8 @@ class _MediaHero extends StatelessWidget {
           return Stack(
             fit: StackFit.expand,
             children: [
-              Image.network(p, fit: BoxFit.cover),
-              BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                child: Container(color: Colors.black.withAlpha(50)),
-              ),
+              Container(color: Colors.black),
+              Image.network(p, fit: BoxFit.contain),
               Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -646,34 +1016,18 @@ class _MediaHero extends StatelessWidget {
       );
     }
 
-    // IMAGE: blur background + contain foreground
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        Image.network(
-          url,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Center(child: Icon(Icons.broken_image)),
-          ),
-        ),
-        BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(color: Colors.black.withAlpha(38)),
-        ),
-        Center(
-          child: Image.network(
-            url,
-            fit: BoxFit.contain,
-            errorBuilder: (_, _, _) => const Icon(Icons.broken_image),
-            loadingBuilder: (_, child, progress) {
-              if (progress == null) return child;
-              return const Center(child: CircularProgressIndicator());
-            },
-          ),
-        ),
-      ],
+    return Container(
+      color: scheme.surfaceContainerHighest,
+      alignment: Alignment.center,
+      child: Image.network(
+        url,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => const Center(child: Icon(Icons.broken_image_outlined)),
+        loadingBuilder: (_, child, progress) {
+          if (progress == null) return child;
+          return const Center(child: CircularProgressIndicator());
+        },
+      ),
     );
   }
 }
@@ -830,11 +1184,8 @@ class _VideoHeroState extends State<_VideoHero> {
         return Stack(
           fit: StackFit.expand,
           children: [
-            Image.network(poster!, fit: BoxFit.cover),
-            BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-              child: Container(color: Colors.black.withAlpha(50)),
-            ),
+            Container(color: Colors.black),
+            Image.network(poster!, fit: BoxFit.contain),
             Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -876,8 +1227,9 @@ class _VideoHeroState extends State<_VideoHero> {
     return Stack(
       fit: StackFit.expand,
       children: [
+        Container(color: Colors.black),
         FittedBox(
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           child: SizedBox(
             width: c.value.size.width,
             height: c.value.size.height,
