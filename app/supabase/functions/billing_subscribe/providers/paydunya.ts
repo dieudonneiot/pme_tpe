@@ -3,6 +3,8 @@ export interface PayDunyaCheckoutParams {
   description: string;
   reference: string;
   callbackUrl: string;
+  returnUrl?: string;
+  cancelUrl?: string;
 }
 
 export class PayDunya {
@@ -25,8 +27,8 @@ export class PayDunya {
       },
       actions: {
         callback_url: params.callbackUrl,
-        return_url: params.callbackUrl,
-        cancel_url: params.callbackUrl,
+        return_url: params.returnUrl ?? params.callbackUrl,
+        cancel_url: params.cancelUrl ?? params.callbackUrl,
       },
       custom_data: {
         reference: params.reference,

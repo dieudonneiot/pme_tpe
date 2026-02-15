@@ -3,6 +3,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import { PayDunya } from "./providers/paydunya.ts"
 import Stripe from "https://esm.sh/stripe@14.25.0?target=deno"
 
+function json(status: number, body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
 serve(async (req) => {
   const body = await req.json().catch(() => ({}))
   const business_id = body?.business_id as string | undefined
@@ -11,11 +18,11 @@ serve(async (req) => {
   const provider = providerRaw.toLowerCase()
 
   if (!business_id || !plan_code) {
-    return new Response("Missing business_id or plan_code", { status: 400 })
+    return json(400, { error: "Missing business_id or plan_code" })
   }
 
   if (provider !== "paydunya" && provider !== "stripe") {
-    return new Response("Unsupported provider", { status: 400 })
+    return json(400, { error: "Unsupported provider" })
   }
 
   const sb = createClient(
@@ -23,19 +30,26 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   )
 
-  const auth = req.headers.get("Authorization")?.replace("Bearer ", "")
-  const { data: user, error: authErr } = await sb.auth.getUser(auth)
-  if (authErr || !user?.user) return new Response("Unauthorized", { status: 401 })
+  const publicBaseUrl = Deno.env.get("PUBLIC_BASE_URL") ?? ""
+  const callbackSecret = Deno.env.get("PAYMENTS_CALLBACK_SECRET") ?? ""
+
+  const authHeader = req.headers.get("Authorization") ?? ""
+  const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : ""
+  const { data: { user }, error: authErr } = await sb.auth.getUser(jwt)
+  if (authErr || !user) return json(401, { error: "Unauthorized" })
 
   // Security: ensure the caller belongs to the business (owner/admin/staff).
   const { data: member } = await sb
     .from("business_members")
     .select("role")
     .eq("business_id", business_id)
-    .eq("user_id", user.user.id)
+    .eq("user_id", user.id)
     .maybeSingle()
 
-  if (!member) return new Response("Forbidden", { status: 403 })
+  const role = (member as { role?: string } | null)?.role ?? ""
+  if (!["owner", "admin", "staff"].includes(role)) {
+    return json(403, { error: "Forbidden" })
+  }
 
   const { data: plan } = await sb
     .from("plans")
@@ -43,11 +57,11 @@ serve(async (req) => {
     .eq("code", plan_code)
     .single()
 
-  if (!plan) return new Response("Plan inconnu", { status: 400 })
+  if (!plan) return json(400, { error: "Plan inconnu" })
 
   const amount = Number(plan.monthly_price_amount ?? 0)
   if (!Number.isFinite(amount) || amount <= 0) {
-    return new Response("Plan pricing missing/invalid", { status: 400 })
+    return json(400, { error: "Plan pricing missing/invalid" })
   }
 
   // Create a payment row we can reconcile in callbacks (PayDunya / Stripe).
@@ -65,30 +79,49 @@ serve(async (req) => {
         plan_code: plan.code,
         plan_id: plan.id,
         period_days: 30,
-        actor_user_id: user.user.id,
+        actor_user_id: user.id,
       },
     })
     .select("id")
     .single()
 
   if (payErr || !payRow) {
-    return new Response(`DB error: ${payErr?.message ?? "unknown"}`, {
-      status: 500,
-    })
+    return json(500, { error: `DB error: ${payErr?.message ?? "unknown"}` })
   }
 
   const ref = payRow.id as string
-  const callbackBase = `${Deno.env.get("PUBLIC_BASE_URL")}/payments_callback`
+  if (!publicBaseUrl) {
+    await sb.from("payments").update({ status: "failed" }).eq("id", ref)
+    return json(500, { error: "Payment provider not configured" })
+  }
+
+  const callbackBase = `${publicBaseUrl}/payments_callback`
+  const callbackUrl = callbackSecret
+    ? `${callbackBase}?cb_secret=${encodeURIComponent(callbackSecret)}`
+    : callbackBase
 
   let paymentUrl: string | null = null
 
   if (provider === "paydunya") {
-    paymentUrl = await PayDunya.createCheckout({
-      amount,
-      description: `Abonnement ${plan.name}`,
-      reference: ref,
-      callbackUrl: callbackBase,
-    })
+    try {
+      paymentUrl = await PayDunya.createCheckout({
+        amount,
+        description: `Abonnement ${plan.name}`,
+        reference: ref,
+        callbackUrl,
+        returnUrl: callbackBase,
+        cancelUrl: callbackBase,
+      })
+    } catch (e) {
+      const msg = (e as { message?: unknown })?.message
+      const safeMsg = typeof msg === "string" ? msg : "PayDunya error"
+
+      await sb.from("payments")
+        .update({ status: "failed", metadata: { error: safeMsg } })
+        .eq("id", ref)
+
+      return json(502, { error: "Paiement indisponible. Réessaie dans un instant." })
+    }
 
     await sb
       .from("payments")
@@ -153,9 +186,7 @@ serve(async (req) => {
       .eq("id", ref)
   }
 
-  if (!paymentUrl) return new Response("No payment URL", { status: 500 })
+  if (!paymentUrl) return json(500, { error: "No payment URL" })
 
-  return new Response(JSON.stringify({ payment_url: paymentUrl, ref }), {
-    headers: { "Content-Type": "application/json" },
-  })
+  return json(200, { payment_url: paymentUrl, ref })
 })

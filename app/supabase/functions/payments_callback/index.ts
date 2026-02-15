@@ -2,6 +2,13 @@ import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import Stripe from "https://esm.sh/stripe@14.25.0?target=deno"
 
+function json(status: number, body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  })
+}
+
 async function applySubscriptionPayment(
   sb: ReturnType<typeof createClient>,
   paymentId: string,
@@ -113,9 +120,11 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   )
 
+  const callbackSecret = Deno.env.get("PAYMENTS_CALLBACK_SECRET") ?? ""
+  const url = new URL(req.url)
+
   // Stripe success redirect (GET)
   if (req.method === "GET") {
-    const url = new URL(req.url)
     const provider = (url.searchParams.get("provider") ?? "").toLowerCase()
     const ref = url.searchParams.get("ref")
     const sessionId = url.searchParams.get("session_id")
@@ -160,6 +169,13 @@ serve(async (req) => {
   }
 
   // PayDunya callback (POST JSON)
+  if (callbackSecret) {
+    const incoming = url.searchParams.get("cb_secret") ?? ""
+    if (incoming !== callbackSecret) {
+      return json(401, { error: "Unauthorized" })
+    }
+  }
+
   const payload = await req.json().catch(() => null)
   if (!payload) return new Response("Missing payload", { status: 400 })
 

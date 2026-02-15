@@ -636,7 +636,31 @@ Why you saw “Erreur serveur pendant le paiement…”
 - The error is coming from the Edge Function (status >= 500), typically because:
   - PayDunya env keys are missing/invalid, or PayDunya API rejected the request
   - `PUBLIC_BASE_URL` is not set, producing an invalid callback/return URL
-  - The Edge Function wasn’t redeployed yet (still running an older version)
+ - The Edge Function wasn’t redeployed yet (still running an older version)
+
+--------------------------------------------------------------------------------
+2026-02-15 - Edge security: callback secret for PayDunya/Stripe flow
+
+Goal
+- With “Verify JWT with legacy secret” disabled (needed for provider callbacks), prevent anyone on the internet from faking PayDunya callbacks.
+
+Changes (Edge Functions)
+- Added optional `PAYMENTS_CALLBACK_SECRET` support:
+  - `app/supabase/functions/create_payment_intent/index.ts`
+  - `app/supabase/functions/billing_subscribe/index.ts`
+  - `app/supabase/functions/payments_callback/index.ts`
+- Updated PayDunya provider payload so:
+  - `callback_url` includes the secret (server-to-server)
+  - `return_url` / `cancel_url` do NOT need to expose the secret to the user browser
+  - Files:
+    - `app/supabase/functions/create_payment_intent/providers/paydunya.ts`
+    - `app/supabase/functions/billing_subscribe/providers/paydunya.ts`
+
+How to enable
+- Set these Edge Function secrets in Supabase:
+  - `PUBLIC_BASE_URL` = `https://<project-ref>.supabase.co/functions/v1`
+  - `PAYMENTS_CALLBACK_SECRET` = random long string (store privately)
+- Redeploy functions after updating secrets.
 
 --------------------------------------------------------------------------------
 2026-02-15 - Public product page: larger gallery on big screens + fix variant overflow

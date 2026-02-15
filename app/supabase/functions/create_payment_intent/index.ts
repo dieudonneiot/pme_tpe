@@ -29,6 +29,7 @@ serve(async (req) => {
   )
 
   const publicBaseUrl = Deno.env.get("PUBLIC_BASE_URL") ?? ""
+  const callbackSecret = Deno.env.get("PAYMENTS_CALLBACK_SECRET") ?? ""
 
   const body = await req.json().catch(() => null)
   const request_id = body?.request_id
@@ -129,7 +130,10 @@ serve(async (req) => {
     return json(500, { error: "Payment provider not configured" })
   }
 
-  const callbackUrl = `${publicBaseUrl}/payments_callback`
+  const callbackUrlBase = `${publicBaseUrl}/payments_callback`
+  const callbackUrl = callbackSecret
+    ? `${callbackUrlBase}?cb_secret=${encodeURIComponent(callbackSecret)}`
+    : callbackUrlBase
 
   let paymentUrl: string
   try {
@@ -138,6 +142,8 @@ serve(async (req) => {
       description: "Commande PME_TPE",
       reference: intent.id,
       callbackUrl,
+      returnUrl: callbackUrlBase,
+      cancelUrl: callbackUrlBase,
     })
   } catch (e) {
     const msg = (e as { message?: unknown })?.message
