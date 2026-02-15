@@ -683,6 +683,22 @@ Fix
     - `app/supabase/functions/billing_subscribe/providers/paydunya.ts`
 
 --------------------------------------------------------------------------------
+2026-02-15 - PayDunya: use TOKEN + sandbox endpoint in test mode
+
+Problem
+- PayDunya returned HTML 500 pages (non-JSON), making payments fail.
+
+Likely causes
+- PayDunya API expects `PAYDUNYA-TOKEN` header (the “Token” value shown in PayDunya dashboard), not just public/private keys.
+- In test mode, PayDunya uses `sandbox-api` endpoints; using test keys against production API can fail.
+
+Fix
+- Updated PayDunya providers to:
+  - require `PAYDUNYA_TOKEN` (or `PAYDUNYA_API_TOKEN`)
+  - auto-select sandbox vs live endpoint based on `PAYDUNYA_MODE` or private key prefix `test_`
+  - force integer `total_amount` (safer for XOF flows)
+
+--------------------------------------------------------------------------------
 2026-02-15 - Edge security: callback secret for PayDunya/Stripe flow
 
 Goal

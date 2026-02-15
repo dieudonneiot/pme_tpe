@@ -9,17 +9,35 @@ export interface PayDunyaCheckoutParams {
 
 export class PayDunya {
   static async createCheckout(params: PayDunyaCheckoutParams): Promise<string> {
-    const apiKey = Deno.env.get("PAYDUNYA_API_KEY");
-    const apiSecret = Deno.env.get("PAYDUNYA_API_SECRET");
+    const publicKey = Deno.env.get("PAYDUNYA_API_KEY") ?? Deno.env.get("PAYDUNYA_PUBLIC_KEY");
+    const privateKey = Deno.env.get("PAYDUNYA_API_SECRET") ?? Deno.env.get("PAYDUNYA_PRIVATE_KEY");
     const masterKey = Deno.env.get("PAYDUNYA_MASTER_KEY");
+    const token = Deno.env.get("PAYDUNYA_TOKEN") ?? Deno.env.get("PAYDUNYA_API_TOKEN");
 
-    if (!apiKey || !apiSecret || !masterKey) {
-      throw new Error("PayDunya env keys missing");
+    if (!privateKey || !masterKey || !token) {
+      throw new Error(
+        "PayDunya env keys missing (need PAYDUNYA_MASTER_KEY + PAYDUNYA_API_SECRET/PRIVATE_KEY + PAYDUNYA_TOKEN)",
+      );
     }
+
+    const modeRaw = (Deno.env.get("PAYDUNYA_MODE") ?? "").toLowerCase();
+    const mode =
+      modeRaw === "test" || modeRaw === "sandbox"
+        ? "test"
+        : modeRaw === "live" || modeRaw === "prod" || modeRaw === "production"
+          ? "live"
+          : privateKey.startsWith("test_")
+            ? "test"
+            : "live";
+
+    const endpoint = mode === "test"
+      ? "https://app.paydunya.com/sandbox-api/v1/checkout-invoice/create"
+      : "https://app.paydunya.com/api/v1/checkout-invoice/create";
 
     const payload = {
       invoice: {
-        total_amount: params.amount,
+        // XOF and most PayDunya flows expect integer amounts.
+        total_amount: Math.round(params.amount),
         description: params.description,
       },
       store: {
@@ -35,15 +53,20 @@ export class PayDunya {
       },
     };
 
-    const res = await fetch("https://app.paydunya.com/api/v1/checkout-invoice/create", {
+    const headers: Record<string, string> = {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "PAYDUNYA-MASTER-KEY": masterKey,
+      "PAYDUNYA-PRIVATE-KEY": privateKey,
+      "PAYDUNYA-TOKEN": token,
+    };
+
+    // Some PayDunya setups also expose a public key; keep it best-effort.
+    if (publicKey) headers["PAYDUNYA-PUBLIC-KEY"] = publicKey;
+
+    const res = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "PAYDUNYA-MASTER-KEY": masterKey,
-        "PAYDUNYA-PRIVATE-KEY": apiSecret,
-        "PAYDUNYA-PUBLIC-KEY": apiKey,
-      },
+      headers,
       body: JSON.stringify(payload),
     });
 
